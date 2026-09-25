@@ -1,0 +1,7 @@
+﻿Milestone 3.2 pre-change backup
+Created: 2026-09-09 21:27:19
+
+Purpose:
+Preserve the verified Phase 2 / Milestone 3.1 UI foundation before Milestone 3.2 streaming UI changes.
+
+No application code was modified by this backup.

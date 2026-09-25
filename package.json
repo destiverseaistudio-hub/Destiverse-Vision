@@ -1,0 +1,24 @@
+{
+  "name": "destiverse-vision",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=web",
+    "admin:dev": "npm run dev --workspace=admin --",
+    "build": "npm run build --workspace=web",
+    "admin:build": "npm run build --workspace=admin",
+    "build:admin": "npm run build --workspace=admin",
+    "build:all": "npm run build --workspace=web && npm run build --workspace=admin",
+    "lint": "npm run lint --workspace=web",
+    "package:check": "npm run build:all && npm run lint --workspace=web",
+    "preview": "npm run preview --workspace=web",
+    "format": "prettier --write .",
+    "apk:sync": "npm run build --workspace=web && npm run cap:sync --workspace=web",
+    "apk:open": "npm run cap:android --workspace=web"
+  }
+}

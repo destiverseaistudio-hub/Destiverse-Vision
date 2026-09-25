@@ -1,0 +1,42 @@
+npm ls --depth=0
+
+destiverse-vision@0.1.0 D:\Projects\DestiVerse-Vision
+GööGöÇGö¼ web@0.0.0 -> .\apps\web
+  Gö£GöÇGöÇ @babel/core@7.29.7
+  Gö£GöÇGöÇ @eslint/js@10.0.1
+  Gö£GöÇGöÇ @hookform/resolvers@5.7.1
+  Gö£GöÇGöÇ @rolldown/plugin-babel@0.2.3
+  Gö£GöÇGöÇ @supabase/supabase-js@2.112.0
+  Gö£GöÇGöÇ @tailwindcss/vite@4.3.3
+  Gö£GöÇGöÇ @tanstack/react-query@5.101.4
+  Gö£GöÇGöÇ @types/babel__core@7.20.5
+  Gö£GöÇGöÇ @types/node@24.13.3
+  Gö£GöÇGöÇ @types/react-dom@19.2.4
+  Gö£GöÇGöÇ @types/react@19.2.18
+  Gö£GöÇGöÇ @vitejs/plugin-react@6.0.5
+  Gö£GöÇGöÇ babel-plugin-react-compiler@1.0.0
+  Gö£GöÇGöÇ class-variance-authority@0.7.1
+  Gö£GöÇGöÇ clsx@2.1.1
+  Gö£GöÇGöÇ eslint-plugin-react-hooks@7.1.1
+  Gö£GöÇGöÇ eslint-plugin-react-refresh@0.5.3
+  Gö£GöÇGöÇ eslint@10.8.0
+  Gö£GöÇGöÇ framer-motion@12.43.0
+  Gö£GöÇGöÇ globals@17.9.0
+  Gö£GöÇGöÇ husky@9.1.7
+  Gö£GöÇGöÇ lint-staged@16.4.0
+  Gö£GöÇGöÇ lucide-react@1.28.0
+  Gö£GöÇGöÇ prettier-plugin-tailwindcss@0.8.1
+  Gö£GöÇGöÇ prettier@3.9.6
+  Gö£GöÇGöÇ react-dom@19.2.8
+  Gö£GöÇGöÇ react-hook-form@7.84.0
+  Gö£GöÇGöÇ react-router-dom@7.18.2
+  Gö£GöÇGöÇ react@19.2.8
+  Gö£GöÇGöÇ tailwind-merge@3.6.0
+  Gö£GöÇGöÇ tailwindcss-animate@1.0.7
+  Gö£GöÇGöÇ tailwindcss@4.3.3
+  Gö£GöÇGöÇ typescript-eslint@8.66.0
+  Gö£GöÇGöÇ typescript@6.0.3
+  Gö£GöÇGöÇ vite@8.2.0
+  Gö£GöÇGöÇ zod@4.4.3
+  GööGöÇGöÇ zustand@5.0.14
+

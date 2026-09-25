@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DestiVerse Vision</string>
+    <string name="title_activity_main">DestiVerse Vision</string>
+    <string name="package_name">com.destiverse.vision</string>
+    <string name="custom_url_scheme">com.destiverse.vision</string>
+</resources>

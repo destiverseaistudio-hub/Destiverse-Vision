@@ -1,0 +1,257 @@
+﻿import { useEffect, useState } from "react"
+import {
+  Link,
+  useNavigate,
+} from "react-router-dom"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+import {
+  resetPasswordSchema,
+  type ResetPasswordFormData,
+} from "@/schemas/auth"
+
+import { usePasswordReset } from "@/hooks/usePasswordReset"
+import { useAuth } from "@/contexts/AuthContext"
+import { getCurrentSession } from "@/services/auth"
+
+export default function ResetPasswordPage() {
+  const navigate = useNavigate()
+  const { session, loading: authLoading } = useAuth()
+
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const [hasRecoverySession, setHasRecoverySession] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ResetPasswordFormData>({
+    resolver: zodResolver(resetPasswordSchema),
+  })
+
+  const {
+    loading,
+    serverError,
+    successMessage,
+    resetPassword,
+  } = usePasswordReset()
+
+  useEffect(() => {
+    let mounted = true
+
+    async function verifySession() {
+      const { data } = await getCurrentSession()
+
+      if (!mounted) {
+        return
+      }
+
+      setHasRecoverySession(Boolean(data.session ?? session))
+      setSessionChecked(true)
+    }
+
+    if (!authLoading) {
+      void verifySession()
+    }
+
+    return () => {
+      mounted = false
+    }
+  }, [authLoading, session])
+
+  async function onSubmit(data: ResetPasswordFormData) {
+    if (
+      loading ||
+      successMessage ||
+      !hasRecoverySession
+    ) {
+      return
+    }
+
+    const result = await resetPassword(data)
+
+    if (result.success) {
+      window.setTimeout(() => {
+        navigate("/dashboard", { replace: true })
+      }, 1200)
+    }
+  }
+
+  if (authLoading || !sessionChecked) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+        <p className="text-slate-600">
+          Verifying password reset session...
+        </p>
+      </main>
+    )
+  }
+
+  if (!hasRecoverySession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Reset link expired</CardTitle>
+
+            <CardDescription>
+              This password reset session is no longer valid.
+              Please request a new reset link.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <Link
+              to="/forgot-password"
+              className="flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
+            >
+              Request a New Reset Link
+            </Link>
+
+            <p className="mt-4 text-center text-sm text-slate-600">
+              <Link
+                to="/"
+                className="font-medium underline"
+              >
+                Return to Sign In
+              </Link>
+            </p>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Create a new password</CardTitle>
+
+          <CardDescription>
+            Choose a new secure password for your DestiVerse
+            Vision account.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent>
+          <form
+            className="space-y-5"
+            onSubmit={handleSubmit(onSubmit)}
+            noValidate
+          >
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                New Password
+              </Label>
+
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Create a secure password"
+                aria-invalid={
+                  errors.password ? "true" : "false"
+                }
+                aria-describedby={
+                  errors.password
+                    ? "reset-password-error"
+                    : undefined
+                }
+                {...register("password")}
+              />
+
+              {errors.password && (
+                <p
+                  id="reset-password-error"
+                  role="alert"
+                  className="text-sm text-red-500"
+                >
+                  {errors.password.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">
+                Confirm New Password
+              </Label>
+
+              <Input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Confirm your new password"
+                aria-invalid={
+                  errors.confirmPassword
+                    ? "true"
+                    : "false"
+                }
+                aria-describedby={
+                  errors.confirmPassword
+                    ? "reset-confirm-password-error"
+                    : undefined
+                }
+                {...register("confirmPassword")}
+              />
+
+              {errors.confirmPassword && (
+                <p
+                  id="reset-confirm-password-error"
+                  role="alert"
+                  className="text-sm text-red-500"
+                >
+                  {errors.confirmPassword.message}
+                </p>
+              )}
+            </div>
+
+            {serverError && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700"
+              >
+                {serverError}
+              </div>
+            )}
+
+            {successMessage && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-700"
+              >
+                {successMessage}
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              type="submit"
+              disabled={loading || Boolean(successMessage)}
+              aria-busy={loading}
+            >
+              {loading
+                ? "Updating Password..."
+                : "Update Password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </main>
+  )
+}
+

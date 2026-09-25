@@ -1,0 +1,324 @@
+export type ContentType =
+  | "Movie"
+  | "Series"
+  | "Short Film"
+  | "Documentary"
+  | "AI Video"
+  | "Dancing AI Video"
+  | "Podcast"
+  | "CEO & Business"
+  | "AI UGC"
+  | "Interview"
+  | "Music Video"
+  | "Tutorial"
+  | "Live Stream"
+
+export type Episode = {
+  id: string
+  title: string
+  seasonNumber: number
+  episodeNumber: number
+  duration?: string
+  videoSrc: string
+  description?: string
+  subtitlesUrl?: string
+}
+
+export type ContentItem = {
+  id: string
+  title: string
+  description: string
+  type: ContentType
+  category: string
+  meta: string
+  badge?: string
+  artworkClass: string
+  featured?: boolean
+  videoSrc?: string
+  homeSection?: string
+  sectionOrder?: number
+  displayOrder?: number
+  posterUrl?: string
+  heroUrl?: string
+  subtitlesUrl?: string
+  episodes?: Episode[]
+}
+
+export type ContentRow = {
+  title: string
+  subtitle?: string
+  items: ContentItem[]
+}
+
+export const featuredContent: ContentItem = {
+  id: "river-goddess-gift",
+  title: "The River Goddess's Gift",
+  description:
+    "A mysterious call awakens an ancient destiny, drawing a new generation into a story shaped by secrets, courage, and forces that refuse to remain forgotten.",
+  type: "Series",
+  category: "DestiVerse Reels",
+  meta: "Original Storytelling",
+  badge: "Featured",
+  artworkClass: "dv-art-river",
+  featured: true,
+  episodes: [
+    {
+      id: "rgg-s1e1",
+      title: "A Mysterious Call, A Destiny Awakens",
+      seasonNumber: 1,
+      episodeNumber: 1,
+      duration: "24m",
+      description: "Young Kalu hears the whispering current of the ancient river, unaware of the covenant made seven centuries ago.",
+      videoSrc: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    },
+    {
+      id: "rgg-s1e2",
+      title: "The Waters Speak",
+      seasonNumber: 1,
+      episodeNumber: 2,
+      duration: "28m",
+      description: "As the elders gather in counsel, the shrine signs begin to align with the prophecy of the rising tide.",
+      videoSrc: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    },
+    {
+      id: "rgg-s1e3",
+      title: "The Covenant Secrets",
+      seasonNumber: 1,
+      episodeNumber: 3,
+      duration: "31m",
+      description: "Betrayal in the royal court threatens to sever the bond between the village and the River Goddess.",
+      videoSrc: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    },
+    {
+      id: "rgg-s1e4",
+      title: "Destiny Revealed",
+      seasonNumber: 1,
+      episodeNumber: 4,
+      duration: "35m",
+      description: "The confrontation at the sacred falls forces Kalu to choose between his heritage and his heart.",
+      videoSrc: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    },
+  ],
+}
+
+export const contentRows: ContentRow[] = [
+  {
+    title: "Trending Now",
+    subtitle: "Popular stories viewers are watching right now.",
+    items: [
+      {
+        id: "river-goddess-part-1",
+        title:
+          "The River Goddess's Gift Part 1 - A Mysterious Call A Destiny Awakens!",
+        description:
+          "A mysterious call awakens a destiny that will change everything.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 1",
+        badge: "Trending",
+        artworkClass: "dv-art-river",
+      },
+      {
+        id: "river-goddess-part-3",
+        title:
+          "The River Goddess's Gift Part 3 - The Covenant Secrets. Betrayal. A Destiny Revealed!",
+        description:
+          "Secrets surface as an ancient covenant forces a destiny into the open.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 3",
+        badge: "Trending",
+        artworkClass: "dv-art-covenant",
+      },
+      {
+        id: "iron-pharaoh-part-3",
+        title:
+          "The Iron Pharaoh Part 3 - The War of Egypt The Invasion Begins. The Hero Rises.",
+        description:
+          "The invasion begins as a rising hero is forced into a war that will define an era.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 3",
+        badge: "Trending",
+        artworkClass: "dv-art-pharaoh",
+      },
+    ],
+  },
+  {
+    title: "DestiVerse Reels",
+    subtitle: "Short-form stories from the DestiVerse universe.",
+    items: [
+      {
+        id: "river-goddess-part-1",
+        title:
+          "The River Goddess's Gift Part 1 - A Mysterious Call A Destiny Awakens!",
+        description:
+          "A mysterious call awakens a destiny that will change everything.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 1",
+        badge: "Reel",
+        artworkClass: "dv-art-river",
+      },
+      {
+        id: "river-goddess-part-3",
+        title:
+          "The River Goddess's Gift Part 3 - The Covenant Secrets. Betrayal. A Destiny Revealed!",
+        description:
+          "Secrets surface as an ancient covenant forces a destiny into the open.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 3",
+        badge: "Reel",
+        artworkClass: "dv-art-covenant",
+      },
+      {
+        id: "iron-pharaoh-part-3",
+        title:
+          "The Iron Pharaoh Part 3 - The War of Egypt The Invasion Begins. The Hero Rises.",
+        description:
+          "The invasion begins as a rising hero is forced into a war that will define an era.",
+        type: "Short Film",
+        category: "DestiVerse Reels",
+        meta: "Part 3",
+        badge: "Reel",
+        artworkClass: "dv-art-pharaoh",
+      },
+    ],
+  },
+  {
+    title: "DestiVerse Originals",
+    subtitle: "Original productions created for DestiVerse.",
+    items: [
+      {
+        id: "river-goddess-reels",
+        title: "The River Goddess's Gift",
+        description:
+          "A cinematic original story built around mystery, destiny, and an awakening that cannot be ignored.",
+        type: "Series",
+        category: "Originals",
+        meta: "DestiVerse Original",
+        badge: "Original",
+        artworkClass: "dv-art-river",
+      },
+      {
+        id: "iron-pharaoh-original",
+        title: "The Iron Pharaoh Part 3",
+        description:
+          "An epic historical action story as invasion brings a new hero to the forefront.",
+        type: "Short Film",
+        category: "Originals",
+        meta: "DestiVerse Original",
+        badge: "Original",
+        artworkClass: "dv-art-pharaoh",
+      },
+    ],
+  },
+  {
+    title: "African Stories",
+    subtitle: "Stories rooted in African imagination and culture.",
+    items: [
+      {
+        id: "river-goddess-african",
+        title: "The River Goddess's Gift",
+        description:
+          "A culturally grounded story of mystery, destiny, and the power of an ancient legacy.",
+        type: "Series",
+        category: "African Stories",
+        meta: "African Storytelling",
+        artworkClass: "dv-art-river",
+      },
+      {
+        id: "iron-pharaoh-african",
+        title: "The Iron Pharaoh Part 3",
+        description:
+          "A sweeping African-inspired historical action story built around conflict and courage.",
+        type: "Short Film",
+        category: "African Stories",
+        meta: "African Storytelling",
+        artworkClass: "dv-art-pharaoh",
+      },
+    ],
+  },
+  {
+    title: "AI Films",
+    subtitle: "Cinematic stories brought to life with AI.",
+    items: [
+      {
+        id: "river-goddess-ai-1",
+        title:
+          "The River Goddess's Gift Part 1 - A Mysterious Call A Destiny Awakens!",
+        description:
+          "A cinematic AI film experience blending mystery, atmosphere, and original storytelling.",
+        type: "Short Film",
+        category: "AI Films",
+        meta: "AI Film",
+        artworkClass: "dv-art-river",
+      },
+      {
+        id: "river-goddess-ai-3",
+        title:
+          "The River Goddess's Gift Part 3 - The Covenant Secrets. Betrayal. A Destiny Revealed!",
+        description:
+          "A cinematic continuation where hidden secrets and destiny collide.",
+        type: "Short Film",
+        category: "AI Films",
+        meta: "AI Film",
+        artworkClass: "dv-art-covenant",
+      },
+      {
+        id: "iron-pharaoh-ai-3",
+        title:
+          "The Iron Pharaoh Part 3 - The War of Egypt The Invasion Begins. The Hero Rises.",
+        description:
+          "An AI-crafted historical action experience focused on invasion, conflict, and heroism.",
+        type: "Short Film",
+        category: "AI Films",
+        meta: "AI Film",
+        artworkClass: "dv-art-pharaoh",
+      },
+    ],
+  },
+  {
+    title: "Documentaries",
+    subtitle: "Real stories, creative journeys, and behind-the-scenes.",
+    items: [
+      {
+        id: "destiverse-stories",
+        title: "DestiVerse Stories",
+        description:
+          "Behind-the-story conversations and creative journeys from the DestiVerse world.",
+        type: "Documentary",
+        category: "Documentaries",
+        meta: "Coming Soon",
+        badge: "Coming Soon",
+        artworkClass: "dv-art-documentary",
+      },
+      {
+        id: "behind-the-story",
+        title: "Behind the Story",
+        description:
+          "Explore the creative process behind selected DestiVerse productions.",
+        type: "Documentary",
+        category: "Documentaries",
+        meta: "Coming Soon",
+        badge: "Coming Soon",
+        artworkClass: "dv-art-documentary-alt",
+      },
+    ],
+  },
+]
+
+export const allContent: ContentItem[] = Array.from(
+  new Map(
+    [featuredContent, ...contentRows.flatMap((row) => row.items)].map(
+      (item) => [item.id, item],
+    ),
+  ).values(),
+)
+
+
+
+
+
+
