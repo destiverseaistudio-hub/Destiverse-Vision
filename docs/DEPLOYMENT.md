@@ -15,6 +15,7 @@ Create a production environment file for the web app and admin app using the val
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_ADMIN_APP_URL`
 - `VITE_PUBLIC_APP_URL`
 
 ## Recommended deployment flow

@@ -335,7 +335,7 @@ export default function App() {
 
     void load()
     const channel = supabase
-      .channel("admin-content-live")
+      .channel(`admin-content-live-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "content" }, () => {
         void load()
         setNotice("Content updated live")
