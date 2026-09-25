@@ -435,12 +435,23 @@ export default function App() {
     setAiBusy(false)
   }
 
+  const getAdminOrigin = () => {
+    const configured = import.meta.env.VITE_ADMIN_APP_URL || import.meta.env.VITE_PUBLIC_APP_URL
+    const value = configured?.trim()
+
+    if (value && /^https?:\/\//.test(value)) {
+      return value.replace(/\/$/, "")
+    }
+
+    return window.location.origin
+  }
+
   const signInWithGoogle = async () => {
     setBusy(true)
     setError("")
     const { error: googleError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${getAdminOrigin()}` },
     })
     if (googleError) { setError(googleError.message); setBusy(false) }
   }

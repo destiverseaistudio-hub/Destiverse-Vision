@@ -4,6 +4,17 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
+function getAppOrigin() {
+  const configured = import.meta.env.VITE_PUBLIC_APP_URL
+  const value = configured?.trim()
+
+  if (value && /^https?:\/\//.test(value)) {
+    return value.replace(/\/$/, "")
+  }
+
+  return window.location.origin
+}
+
 export async function signIn(
   email: string,
   password: string,
@@ -25,14 +36,16 @@ export async function signUp(
 }
 
 export async function signInWithGoogle() {
+  const appOrigin = getAppOrigin()
+
   return supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: `${window.location.origin}/dashboard` },
+    options: { redirectTo: `${appOrigin}/dashboard` },
   })
 }
 
 export async function requestPasswordReset(email: string) {
-  const redirectTo = `${window.location.origin}/reset-password`
+  const redirectTo = `${getAppOrigin()}/reset-password`
 
   return supabase.auth.resetPasswordForEmail(
     normalizeEmail(email),

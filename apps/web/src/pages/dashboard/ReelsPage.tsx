@@ -166,7 +166,7 @@ export default function ReelsPage() {
     };
     void load();
     const channel = supabase
-      .channel('reels-feed')
+      .channel(`reels-feed-${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_submissions' }, load)
       .subscribe();
     return () => {

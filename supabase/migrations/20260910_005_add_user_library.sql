@@ -7,6 +7,7 @@ create table if not exists public.watchlist_items (
 
 alter table public.watchlist_items enable row level security;
 
+drop policy if exists "Users manage their own watchlist" on public.watchlist_items;
 create policy "Users manage their own watchlist"
 on public.watchlist_items for all
 to authenticated
@@ -25,6 +26,7 @@ create table if not exists public.watch_progress (
 
 alter table public.watch_progress enable row level security;
 
+drop policy if exists "Users manage their own watch progress" on public.watch_progress;
 create policy "Users manage their own watch progress"
 on public.watch_progress for all
 to authenticated

@@ -38,7 +38,7 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
     void loadFlags()
 
     const channel = supabase
-      .channel("viewer-feature-flags")
+      .channel(`viewer-feature-flags-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "feature_flags" }, () => {
         void loadFlags()
       })

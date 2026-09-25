@@ -50,7 +50,8 @@ export default function OfflineWatchPage() {
   }
   const requestGoogleDrivePermission = async () => {
     setMessage("")
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/dashboard/offline`, scopes: "https://www.googleapis.com/auth/drive.file", queryParams: { prompt: "consent" } } })
+    const appOrigin = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${appOrigin.replace(/\/$/, "")}/dashboard/offline`, scopes: "https://www.googleapis.com/auth/drive.file", queryParams: { prompt: "consent" } } })
     if (error) setMessage(error.message)
   }
   const available = [...mainVideos, ...reels]

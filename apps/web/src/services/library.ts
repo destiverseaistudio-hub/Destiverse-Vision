@@ -60,25 +60,46 @@ export async function saveWatchProgress(
   const { data } = await supabase.auth.getUser()
   if (!data.user || !durationSeconds) return
 
-  const { error } = await supabase.from("watch_progress").upsert({
-    user_id: data.user.id,
-    content_id: contentId,
-    position_seconds: positionSeconds,
-    duration_seconds: durationSeconds,
-    completed: positionSeconds / durationSeconds > 0.9,
-  })
+  try {
+    const { error } = await supabase.from("watch_progress").upsert({
+      user_id: data.user.id,
+      content_id: contentId,
+      position_seconds: positionSeconds,
+      duration_seconds: durationSeconds,
+      completed: positionSeconds / durationSeconds > 0.9,
+    })
 
-  if (error) {
+    if (error && error.code !== "PGRST205") {
+      throw error
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "PGRST205") {
+      return
+    }
     throw error
   }
 }
 
 export async function getWatchProgress() {
-  const { data, error } = await supabase
-    .from("watch_progress")
-    .select("content_id,position_seconds,duration_seconds,completed,updated_at")
-    .eq("completed", false)
-    .order("updated_at", { ascending: false })
-  if (error) throw error
-  return data ?? []
+  try {
+    const { data, error } = await supabase
+      .from("watch_progress")
+      .select("content_id,position_seconds,duration_seconds,completed,updated_at")
+      .eq("completed", false)
+      .order("updated_at", { ascending: false })
+
+    if (error) {
+      if (error.code === "PGRST205" || error.code === "404") {
+        return []
+      }
+      throw error
+    }
+
+    return data ?? []
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && ((error as { code?: string }).code === "PGRST205" || (error as { code?: string }).code === "404")) {
+      return []
+    }
+    throw error
+  }
 }

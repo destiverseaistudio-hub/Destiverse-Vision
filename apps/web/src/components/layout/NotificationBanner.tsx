@@ -21,7 +21,7 @@ export default function NotificationBanner() {
       setNotices((data ?? []) as Notice[])
     }
     void load()
-    const channel = supabase.channel("viewer-notifications").on("postgres_changes", { event: "*", schema: "public", table: "admin_notifications" }, load).subscribe()
+    const channel = supabase.channel(`viewer-notifications-${crypto.randomUUID()}`).on("postgres_changes", { event: "*", schema: "public", table: "admin_notifications" }, load).subscribe()
     return () => { void supabase.removeChannel(channel) }
   }, [notificationsEnabled])
 
