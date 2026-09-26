@@ -555,7 +555,11 @@ export default function ReelsPage() {
               />
             )}
             {!reel.demo ? (
-              <div className="absolute inset-0 z-10" onClick={() => handleCenterTap(reel)} />
+              <div
+                className="absolute left-1/2 top-[48%] z-10 h-[46%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-[30%] bg-transparent"
+                onClick={() => handleCenterTap(reel)}
+                aria-label="Play or pause reel"
+              />
             ) : null}
             {reelLoading[reel.id] ? (
               <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
@@ -589,7 +593,7 @@ export default function ReelsPage() {
                 {(reelPlayback[reel.id] ?? true) ? <Pause className="size-4" /> : <Play className="size-4 fill-current" />}
               </button>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-5 pb-4">
+            <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-4 p-5 pb-4">
               <div className="min-w-0 flex-1">
                 {reel.creator_id ? (
                   <Link
