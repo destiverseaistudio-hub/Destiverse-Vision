@@ -101,6 +101,7 @@ export default function ReelsPage() {
   const [searchParams] = useSearchParams();
   const [reels, setReels] = useState<Reel[]>([]);
   const [liked, setLiked] = useState<string[]>([]);
+  const [reelLikeCounts, setReelLikeCounts] = useState<Record<string, number>>({});
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
   const [notInterested, setNotInterested] = useState<string[]>([]);
@@ -143,6 +144,7 @@ export default function ReelsPage() {
   const reelSwipeStart = useRef<{ y: number; x: number } | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const lastCenterTapRef = useRef<Record<string, number>>({});
+  const centerTapTimeoutRef = useRef<Record<string, number | null>>({});
 
   const [prevSearch, setPrevSearch] = useState(normalizedSearch);
   if (normalizedSearch !== prevSearch) {
@@ -185,6 +187,12 @@ export default function ReelsPage() {
           return { ...reel, video_url: url?.signedUrl ?? reel.video_url };
         }),
       );
+      const { data: reactionRows } = await supabase.from('reel_reactions').select('reel_id').eq('reaction', 'love');
+      const counts = (reactionRows ?? []).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = (accumulator[row.reel_id] ?? 0) + 1;
+        return accumulator;
+      }, {});
+      setReelLikeCounts(counts);
       setReels(signed as unknown as Reel[]);
     };
     void load();
@@ -268,18 +276,26 @@ export default function ReelsPage() {
   const toggleLove = async (reel: Reel, source: 'button' | 'double-tap' = 'button') => {
     if (!session || reel.demo) return;
     const loved = liked.includes(reel.id);
-    if (source === 'double-tap' && loved) return;
+    if (loved) return;
     if (source === 'double-tap') {
       setLikedBurstId(reel.id);
-      setTimeout(() => setLikedBurstId((current) => (current === reel.id ? null : current)), 500);
+      window.setTimeout(() => setLikedBurstId((current) => (current === reel.id ? null : current)), 500);
     }
-    if (loved) return;
     const { error } = await supabase
       .from('reel_reactions')
-      .insert({ reel_id: reel.id, user_id: session.user.id, reaction: 'love' })
+      .upsert(
+        { reel_id: reel.id, user_id: session.user.id, reaction: 'love' },
+        { onConflict: 'reel_id,user_id,reaction', ignoreDuplicates: true },
+      )
       .select('id')
       .single();
-    if (!error) setLiked((current) => [...new Set([...current, reel.id])]);
+    if (!error || error.code === '23505') {
+      setLiked((current) => [...new Set([...current, reel.id])]);
+      setReelLikeCounts((current) => ({
+        ...current,
+        [reel.id]: (current[reel.id] ?? 0) + 1,
+      }));
+    }
   };
   const trackView = async (reel: Reel) => {
     if (!session || reel.demo) return;
@@ -412,7 +428,7 @@ export default function ReelsPage() {
       return { ...current, [reel.id]: next };
     });
   };
-  const totalLikesFor = (reel: Reel) => (liked.includes(reel.id) ? 1 : 0) + (reelBoosts[reel.id] ?? 0) * 5;
+  const totalLikesFor = (reel: Reel) => (reelLikeCounts[reel.id] ?? 0) + (reelBoosts[reel.id] ?? 0) * 5;
   const getCommentAuthorName = (comment: Comment) => {
     if (commentDisplayNames[comment.user_id]) return commentDisplayNames[comment.user_id];
     if (comment.profile_name) return comment.profile_name;
@@ -430,21 +446,28 @@ export default function ReelsPage() {
   const handleCenterTap = (reel: Reel) => {
     const now = Date.now();
     const lastTap = lastCenterTapRef.current[reel.id] ?? 0;
-    lastCenterTapRef.current[reel.id] = now;
+
+    const pendingTap = centerTapTimeoutRef.current[reel.id];
+    if (pendingTap !== null && pendingTap !== undefined) {
+      window.clearTimeout(pendingTap);
+      centerTapTimeoutRef.current[reel.id] = null;
+    }
 
     if (now - lastTap < 260) {
-      void toggleLove(reel, 'double-tap');
       lastCenterTapRef.current[reel.id] = 0;
+      void toggleLove(reel, 'double-tap');
       return;
     }
 
-    const video = videoRefs.current[reel.id];
-    if (!video) return;
-
-    const shouldPlay = video.paused;
-    setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
-    if (shouldPlay) void video.play().catch(() => undefined);
-    else video.pause();
+    lastCenterTapRef.current[reel.id] = now;
+    centerTapTimeoutRef.current[reel.id] = window.setTimeout(() => {
+      const video = videoRefs.current[reel.id];
+      if (!video) return;
+      const shouldPlay = video.paused;
+      setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
+      if (shouldPlay) void video.play().catch(() => undefined);
+      else video.pause();
+    }, 180);
   };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
@@ -510,7 +533,7 @@ export default function ReelsPage() {
         className="h-[calc(100dvh-5rem)] min-h-[580px] snap-y snap-mandatory overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} className="relative grid h-full min-h-[580px] snap-start place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y" onDoubleClick={() => void toggleLove(reel, 'double-tap')}>
+          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
