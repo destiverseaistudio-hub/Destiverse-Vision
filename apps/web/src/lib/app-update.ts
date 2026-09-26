@@ -1,4 +1,6 @@
-export const runningBuildId = __DESTIVERSE_BUILD_ID__
+// Vite replaces this at build time. Keeping it on import.meta.env avoids a
+// bare browser global that could crash a deployed bundle.
+export const runningBuildId = import.meta.env.VITE_APP_BUILD_ID || "unknown"
 
 export type VersionManifest = {
   app: string

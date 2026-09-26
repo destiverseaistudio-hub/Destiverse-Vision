@@ -13,7 +13,7 @@ const buildId = process.env.VERCEL_GIT_COMMIT_SHA
 
 export default defineConfig({
   define: {
-    __DESTIVERSE_BUILD_ID__: JSON.stringify(buildId),
+    "import.meta.env.VITE_APP_BUILD_ID": JSON.stringify(buildId),
   },
   plugins: [
     react(),
