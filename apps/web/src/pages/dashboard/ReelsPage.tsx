@@ -37,7 +37,6 @@ type Reel = {
 };
 type Comment = { id: string; body: string; created_at: string; user_id: string; profile_name?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
-type Engagement = { reel_id: string; likes: number | string; views: number | string };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
 const demos: Reel[] = [
   [
@@ -182,11 +181,11 @@ export default function ReelsPage() {
         }),
       );
       const ids = (data ?? []).map((reel) => reel.id);
-      const { data: engagement } = ids.length
-        ? await supabase.rpc('get_public_reel_engagement', { reel_ids: ids })
+      const { data: reactions } = ids.length
+        ? await supabase.from('reel_reactions').select('reel_id').eq('reaction', 'love').in('reel_id', ids)
         : { data: [] };
-      const counts = ((engagement ?? []) as Engagement[]).reduce<Record<string, number>>((accumulator, row) => {
-        accumulator[row.reel_id] = Number(row.likes);
+      const counts = ((reactions ?? []) as Array<{ reel_id: string }>).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = (accumulator[row.reel_id] ?? 0) + 1;
         return accumulator;
       }, {});
       setReelLikeCounts(counts);
@@ -573,7 +572,14 @@ export default function ReelsPage() {
                 preload="metadata"
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
-                onLoadedMetadata={(event) => setMediaFitByReel((current) => ({ ...current, [reel.id]: event.currentTarget.videoWidth > event.currentTarget.videoHeight ? 'contain' : 'cover' }))}
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget as HTMLVideoElement | null;
+                  if (!video || !Number.isFinite(video.videoWidth) || !Number.isFinite(video.videoHeight)) return;
+                  setMediaFitByReel((current) => ({
+                    ...current,
+                    [reel.id]: video.videoWidth > video.videoHeight ? 'contain' : 'cover',
+                  }));
+                }}
                 onError={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onPlay={() => void trackView(reel)}
               />
