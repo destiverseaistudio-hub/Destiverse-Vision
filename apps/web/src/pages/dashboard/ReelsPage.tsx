@@ -1,7 +1,6 @@
 import {
   ChevronDown,
   ChevronUp,
-  Eye,
   Heart,
   EyeOff,
   Flag,
@@ -104,7 +103,6 @@ export default function ReelsPage() {
   const [reels, setReels] = useState<Reel[]>([]);
   const [liked, setLiked] = useState<string[]>([]);
   const [reelLikeCounts, setReelLikeCounts] = useState<Record<string, number>>({});
-  const [reelViewCounts, setReelViewCounts] = useState<Record<string, number>>({});
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
   const [notInterested, setNotInterested] = useState<string[]>([]);
@@ -133,9 +131,11 @@ export default function ReelsPage() {
   });
   const [creatorSearchResults, setCreatorSearchResults] = useState<CreatorSearchResult[]>([]);
   const [reelAd, setReelAd] = useState<AdCampaign | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const normalizedSearch = searchQuery.trim().toLowerCase().replace(/^@/, '');
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
+  const refreshTouchStart = useRef<number | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const lastCenterTapRef = useRef<Record<string, number>>({});
   const centerTapTimeoutRef = useRef<Record<string, number | null>>({});
@@ -186,12 +186,7 @@ export default function ReelsPage() {
         accumulator[row.reel_id] = Number(row.likes);
         return accumulator;
       }, {});
-      const viewCounts = ((engagement ?? []) as Engagement[]).reduce<Record<string, number>>((accumulator, row) => {
-        accumulator[row.reel_id] = Number(row.views);
-        return accumulator;
-      }, {});
       setReelLikeCounts(counts);
-      setReelViewCounts(viewCounts);
       setReels(signed as unknown as Reel[]);
     };
     void load();
@@ -229,7 +224,11 @@ export default function ReelsPage() {
     ]).then(([blocks, hidden]) => { setBlockedCreators((blocks.data ?? []).map(row => row.creator_id)); setNotInterested((hidden.data ?? []).map(row => row.reel_id)); });
   }, [session]);
   const toggleFollow = async (creatorId: string) => {
-    if (!session || creatorId === session.user.id) return;
+    if (!session) {
+      navigate('/login');
+      return;
+    }
+    if (creatorId === session.user.id) return;
     const isFollowing = following.includes(creatorId);
     const { error } = isFollowing
       ? await supabase
@@ -468,11 +467,18 @@ export default function ReelsPage() {
       if (!video) return;
       const isCurrent = reel.id === activeReelId;
       const shouldPlay = isCurrent && (reelPlayback[reel.id] ?? true);
-      // Browsers permit swipe-driven autoplay only when the next video is muted.
-      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? true);
+      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? false);
       video.muted = muted;
       if (shouldPlay) {
-        void video.play().catch(() => undefined);
+        void video.play().catch(() => {
+          // Sound-on autoplay may be blocked by the browser. Retry muted so a swipe
+          // never leaves the next Reel paused.
+          if (!video.muted && isCurrent) {
+            video.muted = true;
+            setVideoMutedByReel((current) => current[reel.id] === true ? current : { ...current, [reel.id]: true });
+            void video.play().catch(() => undefined);
+          }
+        });
         video.setAttribute('data-play-state', 'active');
       } else {
         video.pause();
@@ -484,6 +490,17 @@ export default function ReelsPage() {
       }
     });
   }, [feed, activeReelId, reelPlayback, videoMutedByReel]);
+  const beginPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (feedRef.current?.scrollTop === 0) refreshTouchStart.current = event.touches[0]?.clientY ?? null;
+  };
+  const finishPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = refreshTouchStart.current;
+    refreshTouchStart.current = null;
+    const end = event.changedTouches[0]?.clientY;
+    if (start === null || end === undefined || end - start < 84 || feedRef.current?.scrollTop !== 0 || isRefreshing) return;
+    setIsRefreshing(true);
+    window.setTimeout(() => window.location.reload(), 250);
+  };
   return (
     <main className="relative mx-auto h-full min-h-0 max-w-[520px] overflow-hidden bg-black shadow-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
@@ -499,8 +516,11 @@ export default function ReelsPage() {
       {searchOpen ? <div className="absolute inset-x-3 top-3 z-40 rounded-2xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur"><div className="flex items-center gap-2"><Search className="ml-2 size-5 shrink-0 text-slate-400" /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') rememberSearch(); }} placeholder="Search creator, Reel, or #hashtag" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-slate-500" /><button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(''); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-300 hover:bg-white/10" aria-label="Close Reel search"><X className="size-5" /></button></div>{normalizedSearch ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Creator results</p>{creatorSearchResults.length ? creatorSearchResults.map(creator => <button type="button" key={creator.user_id} onClick={() => { rememberSearch(); navigate(`/dashboard/creator/${creator.user_id}`); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-white/10"><span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[var(--dv-accent)]/20 text-xs font-black text-[var(--dv-accent)]">{creator.avatar_url ? <img src={creator.avatar_url} alt="" className="size-full object-cover" /> : (creator.display_name || creator.handle).slice(0, 1).toUpperCase()}</span><span className="min-w-0"><strong className="block truncate text-sm text-white">{creator.display_name || creator.handle}</strong><span className="block truncate text-xs text-[var(--dv-accent)]">@{creator.handle}</span></span></button>) : <p className="px-2 py-2 text-xs text-slate-500">No public creator matches.</p>}</div> : recentSearches.length ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Recent searches</p><div className="flex flex-wrap gap-2 px-2 pb-1">{recentSearches.map(term => <button type="button" key={term} onClick={() => setSearchQuery(term)} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/15">{term}</button>)}</div></div> : null}</div> : null}
       <div
         ref={feedRef}
+        onTouchStart={beginPullToRefresh}
+        onTouchEnd={finishPullToRefresh}
         className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
+        {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
           <article key={reel.id} data-reel-id={reel.id} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
             {reel.demo ? (
@@ -515,7 +535,7 @@ export default function ReelsPage() {
                 src={reel.video_url}
                 playsInline
                 loop
-                muted={videoMutedByReel[reel.id] ?? true}
+                muted={videoMutedByReel[reel.id] ?? false}
                 preload="metadata"
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
@@ -580,7 +600,7 @@ export default function ReelsPage() {
                   <button
                     type="button"
                     onClick={() => void toggleFollow(reel.creator_id!)}
-                    className={`ml-2 rounded-full px-2.5 py-1 text-[10px] font-black ${following.includes(reel.creator_id) ? 'bg-white/15 text-white' : 'bg-white text-black'}`}
+                    className={`ml-2 inline-flex min-h-8 shrink-0 items-center rounded-full px-3 text-[11px] font-black shadow-lg ${following.includes(reel.creator_id) ? 'border border-white/25 bg-black/55 text-white' : 'bg-white text-black'}`}
                   >
                     {following.includes(reel.creator_id) ? 'Following' : 'Follow'}
                   </button>
@@ -588,10 +608,9 @@ export default function ReelsPage() {
                 <span className="ml-2 rounded-full bg-white/15 px-2 py-1 text-[10px] font-bold text-white">
                   {reel.demo ? 'DEMO' : 'CREATOR'}
                 </span>
-                <h2 className="mt-3 text-2xl font-black text-white">{reel.title}</h2>
-                {!reel.demo ? <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/65"><Eye className="size-3.5" /> {reelViewCounts[reel.id] ?? 0} views</span> : null}
-                <p className="mt-2 max-w-sm text-sm leading-6 text-white/80">{reel.caption}</p>
-                <div className="mt-4 flex flex-col items-start gap-2">
+                <h2 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-white sm:text-xl">{reel.title}</h2>
+                <p className="mt-1 max-w-sm line-clamp-2 text-xs leading-5 text-white/80 sm:text-sm sm:leading-6">{reel.caption}</p>
+                <div className="mt-2 flex flex-col items-start gap-1.5">
                   <Link to={soundPagePath(reel)} className="inline-flex items-center gap-2 text-xs text-white/75 hover:text-white">
                     <Music2 className="size-4" />
                     <span>{reel.audio_label || 'Original sound · DestiVerse'}</span>
@@ -601,44 +620,44 @@ export default function ReelsPage() {
                   </button>
                 </div>
               </div>
-              <div className="relative z-20 flex flex-col items-center gap-3 pr-1">
+              <div className="relative z-20 mb-8 flex flex-col items-center gap-2 pr-0.5 sm:mb-4">
                 <button
                   type="button"
                   onClick={() => void toggleLove(reel, 'button')}
                   disabled={reel.demo || !session}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur transition-transform duration-200 hover:scale-105">
+                  <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur transition-transform duration-200 hover:scale-105">
                     <Heart
-                      className={`size-4 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)] drop-shadow-[0_0_12px_rgba(255,90,140,0.9)]' : ''}`}
+                      className={`size-3.5 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)] drop-shadow-[0_0_12px_rgba(255,90,140,0.9)]' : ''}`}
                     />
                   </span>
-                  <span className="text-[10px] font-bold">{totalLikesFor(reel)}</span>
+                  <span className="text-[9px] font-bold">{totalLikesFor(reel)}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setCommentReel(reel)}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <MessageCircle className="size-4" />
+                  <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur">
+                    <MessageCircle className="size-3.5" />
                   </span>
-                  <span className="text-[10px] font-bold">Comment</span>
+                  <span className="text-[9px] font-bold">Comment</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => void shareReel(reel)}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <Share2 className="size-4" />
+                  <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur">
+                    <Share2 className="size-3.5" />
                   </span>
-                  <span className="text-[10px] font-bold">Share</span>
+                  <span className="text-[9px] font-bold">Share</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !(videoMutedByReel[reel.id] ?? true);
+                    const next = !(videoMutedByReel[reel.id] ?? false);
                     setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
                     const video = videoRefs.current[reel.id];
                     if (video) {
@@ -647,21 +666,21 @@ export default function ReelsPage() {
                     }
                   }}
                   className="grid justify-items-center gap-1 text-white"
-                  aria-label={videoMutedByReel[reel.id] ?? true ? 'Unmute audio' : 'Mute audio'}
+                  aria-label={videoMutedByReel[reel.id] ?? false ? 'Unmute audio' : 'Mute audio'}
                 >
-                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    {videoMutedByReel[reel.id] ?? true ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                  <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur">
+                    {videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
                   </span>
-                  <span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? true ? 'Sound' : 'Mute'}</span>
+                  <span className="text-[9px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span>
                 </button>
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setMoreActionsReelId((current) => current === reel.id ? null : reel.id)}
-                    className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur text-white"
+                    className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur text-white"
                     aria-label="More reel actions"
                   >
-                    <MoreHorizontal className="size-4" />
+                    <MoreHorizontal className="size-3.5" />
                   </button>
                   {moreActionsReelId === reel.id ? (
                     <div className="absolute bottom-12 right-0 z-40 w-40 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl backdrop-blur">
