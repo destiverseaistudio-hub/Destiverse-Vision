@@ -119,7 +119,9 @@ export default function ReelsPage() {
     }
   });
   const [reelPlayback, setReelPlayback] = useState<Record<string, boolean>>({});
+  const [reelLoading, setReelLoading] = useState<Record<string, boolean>>({});
   const [likedBurstId, setLikedBurstId] = useState<string | null>(null);
+  const [shareReelTarget, setShareReelTarget] = useState<Reel | null>(null);
   const [commentDisplayNames, setCommentDisplayNames] = useState<Record<string, string>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,6 +139,7 @@ export default function ReelsPage() {
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
   const reelSwipeStart = useRef<{ y: number; x: number } | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
   const [prevSearch, setPrevSearch] = useState(normalizedSearch);
@@ -371,8 +374,26 @@ export default function ReelsPage() {
       window.alert('You have already reported this comment.');
     } else window.alert('Your report could not be sent. Please try again.');
   };
-  const shareReel = async (reel: Reel) => {
+  const shareReel = async (reel: Reel, type: 'native' | 'copy' | 'whatsapp' | 'download' = 'native') => {
     const url = reel.demo ? `${window.location.origin}/dashboard/reels` : `${window.location.origin}/dashboard/reels/${reel.id}`;
+    if (type === 'copy') {
+      await navigator.clipboard?.writeText(url);
+      return;
+    }
+    if (type === 'whatsapp') {
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${reel.title} ${url}`)}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (type === 'download') {
+      const link = document.createElement('a');
+      link.href = reel.video_url;
+      link.download = `${reel.title.replace(/\s+/g, '-').toLowerCase()}.mp4`;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
     if (navigator.share)
       await navigator.share({ title: reel.title, text: reel.caption, url }).catch(() => undefined);
     else await navigator.clipboard?.writeText(url);
@@ -380,10 +401,10 @@ export default function ReelsPage() {
   const boostReelLikes = (reel: Reel) => {
     const currentBoosts = reelBoosts[reel.id] ?? 0;
     if (currentBoosts >= 2) return;
-    setReelBoosts((current) => ({
-      ...current,
-      [reel.id]: Math.min(2, (current[reel.id] ?? 0) + 1),
-    }));
+    setReelBoosts((current) => {
+      const next = Math.min(2, (current[reel.id] ?? 0) + 1);
+      return { ...current, [reel.id]: next };
+    });
   };
   const totalLikesFor = (reel: Reel) => (liked.includes(reel.id) ? 1 : 0) + (reelBoosts[reel.id] ?? 0) * 5;
   const getCommentAuthorName = (comment: Comment) => {
@@ -391,6 +412,12 @@ export default function ReelsPage() {
     if (comment.profile_name) return comment.profile_name;
     const userLabel = session?.user.user_metadata?.display_name || session?.user.user_metadata?.full_name || session?.user.email?.split('@')[0];
     return userLabel || 'User';
+  };
+  const triggerSoundSearch = (reel: Reel) => {
+    const sound = reel.audio_label || 'original sound';
+    setSearchOpen(true);
+    setSearchQuery(sound);
+    rememberSearch(sound);
   };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
@@ -448,7 +475,7 @@ export default function ReelsPage() {
           <h1 className="text-2xl font-black text-white">Reels</h1>
           <div className="mt-2 flex gap-3 text-xs font-bold"><button type="button" onClick={() => setFeedMode('for-you')} className={feedMode === 'for-you' ? 'text-white' : 'text-white/50'}>For you</button><button type="button" onClick={() => setFeedMode('following')} className={feedMode === 'following' ? 'text-white' : 'text-white/50'}>Following</button></div>
         </div>
-        <div className="flex items-center gap-2"><button type="button" onClick={() => setSearchOpen(true)} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur" aria-label="Search Reels"><Search className="size-5" /></button><Link to="/dashboard/create-reel" className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-xs font-black text-black"><Upload className="size-4" /> Create</Link></div>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => setSearchOpen(true)} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur" aria-label="Search Reels"><Search className="size-5" /></button><Link to="/dashboard/create-reel" className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-[var(--dv-accent)]/30"><Upload className="size-4" /> Create</Link></div>
       </header>
       {searchOpen ? <div className="absolute inset-x-3 top-3 z-40 rounded-2xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur"><div className="flex items-center gap-2"><Search className="ml-2 size-5 shrink-0 text-slate-400" /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') rememberSearch(); }} placeholder="Search creator, Reel, or #hashtag" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-slate-500" /><button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(''); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-300 hover:bg-white/10" aria-label="Close Reel search"><X className="size-5" /></button></div>{normalizedSearch ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Creator results</p>{creatorSearchResults.length ? creatorSearchResults.map(creator => <button type="button" key={creator.user_id} onClick={() => { rememberSearch(); navigate(`/dashboard/creator/${creator.user_id}`); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-white/10"><span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[var(--dv-accent)]/20 text-xs font-black text-[var(--dv-accent)]">{creator.avatar_url ? <img src={creator.avatar_url} alt="" className="size-full object-cover" /> : (creator.display_name || creator.handle).slice(0, 1).toUpperCase()}</span><span className="min-w-0"><strong className="block truncate text-sm text-white">{creator.display_name || creator.handle}</strong><span className="block truncate text-xs text-[var(--dv-accent)]">@{creator.handle}</span></span></button>) : <p className="px-2 py-2 text-xs text-slate-500">No public creator matches.</p>}</div> : recentSearches.length ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Recent searches</p><div className="flex flex-wrap gap-2 px-2 pb-1">{recentSearches.map(term => <button type="button" key={term} onClick={() => setSearchQuery(term)} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/15">{term}</button>)}</div></div> : null}</div> : null}
       <div
@@ -471,22 +498,50 @@ export default function ReelsPage() {
                 loop
                 muted={videoMutedByReel[reel.id] ?? false}
                 preload="metadata"
+                onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
+                onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
+                onError={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onPlay={() => void trackView(reel)}
+              />
+            )}
+            {!reel.demo ? (
+              <div
+                className="absolute inset-0 z-10"
                 onClick={() => {
-                  const shouldPlay = !(reelPlayback[reel.id] ?? true);
-                  setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
                   const video = videoRefs.current[reel.id];
                   if (!video) return;
-                  if (shouldPlay) {
-                    void video.play().catch(() => undefined);
-                  } else {
-                    video.pause();
+                  const shouldPlay = video.paused;
+                  setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
+                  if (shouldPlay) void video.play().catch(() => undefined);
+                  else video.pause();
+                }}
+                onPointerDown={() => {
+                  if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+                  holdTimerRef.current = window.setTimeout(() => setShareReelTarget(reel), 500);
+                }}
+                onPointerUp={() => {
+                  if (holdTimerRef.current) {
+                    window.clearTimeout(holdTimerRef.current);
+                    holdTimerRef.current = null;
+                  }
+                }}
+                onPointerLeave={() => {
+                  if (holdTimerRef.current) {
+                    window.clearTimeout(holdTimerRef.current);
+                    holdTimerRef.current = null;
                   }
                 }}
               />
-            )}
+            ) : null}
+            {reelLoading[reel.id] ? (
+              <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
+                <div className="grid size-12 place-items-center rounded-full border border-white/25 bg-black/45 backdrop-blur-md">
+                  <div className="size-6 animate-spin rounded-full border-2 border-white/25 border-t-[var(--dv-accent)]" />
+                </div>
+              </div>
+            ) : null}
             {likedBurstId === reel.id ? (
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <div className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
                 <div className="animate-[ping_0.7s_ease-out_forwards] text-6xl text-[var(--dv-accent)]">♥</div>
               </div>
             ) : null}
@@ -556,10 +611,9 @@ export default function ReelsPage() {
                 </span>
                 <h2 className="mt-3 text-2xl font-black text-white">{reel.title}</h2>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-white/80">{reel.caption}</p>
-                <p className="mt-4 flex items-center gap-2 text-xs text-white/70">
-                  <Music2 className="size-4" /> Original sound · DestiVerse
-                </p>
-                {!reel.demo ? <Link to={`/dashboard/reels/${reel.id}`} className="mt-3 inline-block text-xs font-bold text-white/80 underline underline-offset-4">Open Reel</Link> : null}
+                <button type="button" onClick={() => triggerSoundSearch(reel)} className="mt-4 flex items-center gap-2 text-xs text-white/70 hover:text-white">
+                  <Music2 className="size-4" /> {reel.audio_label || 'Original sound · DestiVerse'}
+                </button>
               </div>
               <div className="grid gap-4">
                 <button
@@ -615,6 +669,11 @@ export default function ReelsPage() {
                           if (reel.id === activeReelId && !next) void video.play().catch(() => undefined);
                         }
                       }} className="grid justify-items-center gap-1 text-white"><span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur">{videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</span><span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span></button></> : null}
+                {!reel.demo ? (
+                  <button type="button" onClick={() => { setSearchOpen(true); setSearchQuery(reel.audio_label || 'original sound'); rememberSearch(reel.audio_label || 'original sound'); }} className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-2.5 py-1.5 text-[10px] font-bold text-white">
+                    <Music2 className="size-3.5" /> Use sound
+                  </button>
+                ) : null}
                 {reel.demo ? (
                   <Link
                     to="/dashboard/create-reel"
@@ -650,7 +709,22 @@ export default function ReelsPage() {
           <ChevronDown className="size-5" />
         </button>
       </div>
-      <Link to="/dashboard/create-reel" className="absolute right-4 top-20 z-[60] grid size-11 place-items-center rounded-full bg-[var(--dv-accent)] text-2xl font-black text-white shadow-xl md:hidden" aria-label="Create a Reel">+</Link>
+      <Link to="/dashboard/create-reel" className="absolute right-4 top-20 z-[60] grid size-11 place-items-center rounded-full bg-[var(--dv-accent)] text-2xl font-black text-white shadow-lg shadow-[var(--dv-accent)]/30 md:hidden" aria-label="Create a Reel">+</Link>
+      {shareReelTarget ? (
+        <div className="fixed inset-0 z-[90] grid place-items-end bg-black/70 p-3 sm:place-items-center">
+          <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-[var(--dv-surface)] p-3 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-black uppercase tracking-[.18em] text-[var(--dv-accent)]">Share reel</p>
+              <button type="button" onClick={() => setShareReelTarget(null)} className="rounded-full px-2 py-1 text-xs text-slate-300">Close</button>
+            </div>
+            <div className="grid gap-2">
+              <button type="button" onClick={() => { void shareReel(shareReelTarget, 'whatsapp'); setShareReelTarget(null); }} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm text-white"><span>Share to WhatsApp</span><Share2 className="size-4" /></button>
+              <button type="button" onClick={() => { void shareReel(shareReelTarget, 'copy'); setShareReelTarget(null); }} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm text-white"><span>Copy link</span><Search className="size-4" /></button>
+              <button type="button" onClick={() => { void shareReel(shareReelTarget, 'download'); setShareReelTarget(null); }} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm text-white"><span>Save to device</span><Upload className="size-4" /></button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {commentReel ? (
         <div className="fixed inset-0 z-[80] flex items-end bg-black/70 p-0 sm:items-center sm:justify-center sm:p-5">
           <section className="max-h-[78dvh] w-full max-w-lg rounded-t-3xl border border-white/10 bg-[var(--dv-surface)] p-5 sm:rounded-3xl">
