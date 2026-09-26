@@ -617,7 +617,7 @@ export default function ReelsPage() {
                 {(reelPlayback[reel.id] ?? true) ? <Pause className="size-4" /> : <Play className="size-4 fill-current" />}
               </button>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-4 p-5 pb-4">
+            <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-3 p-4 pb-3 sm:gap-4 sm:p-5 sm:pb-4">
               <div className="min-w-0 flex-1">
                 {reel.creator_id ? (
                   <Link
@@ -645,17 +645,17 @@ export default function ReelsPage() {
                 </span>
                 <h2 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-white sm:text-xl">{reel.title}</h2>
                 <p className="mt-1 max-w-sm line-clamp-2 text-xs leading-5 text-white/80 sm:text-sm sm:leading-6">{reel.caption}</p>
-                <div className="mt-2 flex flex-col items-start gap-1.5">
-                  <Link to={soundPagePath(reel)} className="inline-flex items-center gap-2 text-xs text-white/75 hover:text-white">
-                    <Music2 className="size-4" />
+                <div className="mt-2 flex max-w-full items-center gap-2">
+                  <Link to={soundPagePath(reel)} className="inline-flex min-w-0 max-w-[9rem] items-center gap-1.5 overflow-hidden text-[11px] text-white/75 hover:text-white sm:max-w-none sm:text-xs">
+                    <Music2 className="size-3.5 shrink-0 sm:size-4" />
                     <span>{reel.audio_label || 'Original sound · DestiVerse'}</span>
                   </Link>
-                  <button type="button" onClick={() => triggerSoundSearch(reel)} className="rounded-full border border-white/15 bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white/85 hover:text-white">
+                  <button type="button" onClick={() => triggerSoundSearch(reel)} className="shrink-0 rounded-full border border-white/15 bg-black/35 px-2 py-1 text-[9px] font-bold text-white/85 hover:text-white sm:px-2.5 sm:text-[10px]">
                     Use sound
                   </button>
                 </div>
               </div>
-              <div className="relative z-20 mb-8 flex flex-col items-center gap-2 pr-0.5 sm:mb-4">
+              <div className="relative z-20 mb-12 flex flex-col items-center gap-1.5 pr-0.5 sm:mb-4 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => void toggleLove(reel, 'button')}
