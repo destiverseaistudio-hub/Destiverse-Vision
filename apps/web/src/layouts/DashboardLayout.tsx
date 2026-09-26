@@ -32,7 +32,7 @@ export default function DashboardLayout() {
             <NotificationBanner />
             <UpdateRibbon />
             <main
-              className={`min-h-0 w-full min-w-0 flex-1 overflow-y-auto ${isReelsExperience ? 'overflow-hidden p-0 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0' : 'pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0'}`}
+              className={`min-h-0 w-full min-w-0 flex-1 overflow-y-auto ${isReelsExperience ? 'overflow-hidden p-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0' : 'pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0'}`}
             >
               <div
                 className={

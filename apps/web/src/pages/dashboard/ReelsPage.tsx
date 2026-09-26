@@ -535,7 +535,7 @@ export default function ReelsPage() {
     window.setTimeout(() => window.location.reload(), 250);
   };
   return (
-    <main className="relative mx-auto h-full min-h-[calc(100dvh-8rem)] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:min-h-[calc(100dvh-9rem)] lg:min-h-0 sm:rounded-[2rem] sm:border sm:border-white/10">
+    <main className="relative mx-auto h-full min-h-[calc(100dvh-10rem)] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:min-h-[calc(100dvh-9rem)] lg:min-h-0 sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.24em] text-[var(--dv-accent)]">
@@ -654,7 +654,7 @@ export default function ReelsPage() {
                 <div className="mt-2 flex max-w-full items-center gap-2">
                   <Link to={soundPagePath(reel)} className="inline-flex min-w-0 max-w-[9rem] items-center gap-1.5 overflow-hidden text-[11px] text-white/75 hover:text-white sm:max-w-none sm:text-xs">
                     <Music2 className="size-3.5 shrink-0 sm:size-4" />
-                    <span>{reel.audio_label || 'Original sound · DestiVerse'}</span>
+                    <span className="truncate">{reel.audio_label || 'Original sound · DestiVerse'}</span>
                   </Link>
                   <button type="button" onClick={() => triggerSoundSearch(reel)} className="shrink-0 rounded-full border border-white/15 bg-black/35 px-2 py-1 text-[9px] font-bold text-white/85 hover:text-white sm:px-2.5 sm:text-[10px]">
                     Use sound
