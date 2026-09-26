@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   ChevronUp,
+  Bookmark,
   Heart,
   EyeOff,
   Flag,
@@ -102,6 +103,8 @@ export default function ReelsPage() {
   const [searchParams] = useSearchParams();
   const [reels, setReels] = useState<Reel[]>([]);
   const [liked, setLiked] = useState<string[]>([]);
+  const [savedReels, setSavedReels] = useState<string[]>([]);
+  const [mediaFitByReel, setMediaFitByReel] = useState<Record<string, 'cover' | 'contain'>>({});
   const [reelLikeCounts, setReelLikeCounts] = useState<Record<string, number>>({});
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
@@ -217,6 +220,17 @@ export default function ReelsPage() {
       .then(({ data }) => setLiked((data ?? []).map((row) => row.reel_id)));
   }, [session]);
   useEffect(() => {
+    if (!session) {
+      setSavedReels([]);
+      return;
+    }
+    void supabase
+      .from('reel_saves')
+      .select('reel_id')
+      .eq('user_id', session.user.id)
+      .then(({ data }) => setSavedReels((data ?? []).map((row) => row.reel_id)));
+  }, [session]);
+  useEffect(() => {
     if (!session) return;
     void Promise.all([
       supabase.from('creator_blocks').select('creator_id').eq('blocker_id', session.user.id),
@@ -251,7 +265,15 @@ export default function ReelsPage() {
   const toggleLove = async (reel: Reel, source: 'button' | 'double-tap' = 'button') => {
     if (!session || reel.demo) return;
     const loved = liked.includes(reel.id);
-    if (loved) return;
+    if (loved && source === 'double-tap') return;
+    if (loved) {
+      const { error } = await supabase.from('reel_reactions').delete().eq('reel_id', reel.id).eq('user_id', session.user.id);
+      if (!error) {
+        setLiked((current) => current.filter((id) => id !== reel.id));
+        setReelLikeCounts((current) => ({ ...current, [reel.id]: Math.max(0, (current[reel.id] ?? 1) - 1) }));
+      }
+      return;
+    }
     if (source === 'double-tap') {
       setLikedBurstId(reel.id);
       window.setTimeout(() => setLikedBurstId((current) => (current === reel.id ? null : current)), 500);
@@ -493,6 +515,18 @@ export default function ReelsPage() {
   const beginPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
     if (feedRef.current?.scrollTop === 0) refreshTouchStart.current = event.touches[0]?.clientY ?? null;
   };
+  const toggleSave = async (reel: Reel) => {
+    if (reel.demo) return;
+    if (!session) {
+      navigate('/login');
+      return;
+    }
+    const isSaved = savedReels.includes(reel.id);
+    const { error } = isSaved
+      ? await supabase.from('reel_saves').delete().eq('user_id', session.user.id).eq('reel_id', reel.id)
+      : await supabase.from('reel_saves').upsert({ user_id: session.user.id, reel_id: reel.id }, { onConflict: 'user_id,reel_id', ignoreDuplicates: true });
+    if (!error) setSavedReels((current) => isSaved ? current.filter((id) => id !== reel.id) : [...new Set([...current, reel.id])]);
+  };
   const finishPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
     const start = refreshTouchStart.current;
     refreshTouchStart.current = null;
@@ -531,7 +565,7 @@ export default function ReelsPage() {
                   if (node) videoRefs.current[reel.id] = node;
                   else delete videoRefs.current[reel.id];
                 }}
-                className="absolute inset-0 h-full w-full object-cover"
+                className={`absolute inset-0 h-full w-full ${mediaFitByReel[reel.id] === 'contain' ? 'object-contain' : 'object-cover'}`}
                 src={reel.video_url}
                 playsInline
                 loop
@@ -539,6 +573,7 @@ export default function ReelsPage() {
                 preload="metadata"
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
+                onLoadedMetadata={(event) => setMediaFitByReel((current) => ({ ...current, [reel.id]: event.currentTarget.videoWidth > event.currentTarget.videoHeight ? 'contain' : 'cover' }))}
                 onError={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onPlay={() => void trackView(reel)}
               />
@@ -653,6 +688,17 @@ export default function ReelsPage() {
                     <Share2 className="size-3.5" />
                   </span>
                   <span className="text-[9px] font-bold">Share</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleSave(reel)}
+                  className="grid justify-items-center gap-1 text-white"
+                  aria-label={savedReels.includes(reel.id) ? 'Remove Reel from saved' : 'Save Reel'}
+                >
+                  <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur">
+                    <Bookmark className={`size-3.5 ${savedReels.includes(reel.id) ? 'fill-white text-white' : ''}`} />
+                  </span>
+                  <span className="text-[9px] font-bold">{savedReels.includes(reel.id) ? 'Saved' : 'Save'}</span>
                 </button>
                 <button
                   type="button"
