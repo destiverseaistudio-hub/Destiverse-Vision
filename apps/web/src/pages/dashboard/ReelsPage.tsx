@@ -5,6 +5,7 @@ import {
   EyeOff,
   Flag,
   MessageCircle,
+  MoreHorizontal,
   Music2,
   Pause,
   Play,
@@ -122,6 +123,7 @@ export default function ReelsPage() {
   const [reelLoading, setReelLoading] = useState<Record<string, boolean>>({});
   const [likedBurstId, setLikedBurstId] = useState<string | null>(null);
   const [shareReelTarget, setShareReelTarget] = useState<Reel | null>(null);
+  const [moreActionsReelId, setMoreActionsReelId] = useState<string | null>(null);
   const [commentDisplayNames, setCommentDisplayNames] = useState<Record<string, string>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,10 +248,14 @@ export default function ReelsPage() {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const beginReelSwipe = (event: React.TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target && target.closest('button, a, input, textarea')) return;
     const touch = event.touches[0];
     if (touch) reelSwipeStart.current = { y: touch.clientY, x: touch.clientX };
   };
   const finishReelSwipe = (event: React.TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target && target.closest('button, a, input, textarea')) return;
     const start = reelSwipeStart.current;
     const touch = event.changedTouches[0];
     reelSwipeStart.current = null;
@@ -565,7 +571,7 @@ export default function ReelsPage() {
                 {(reelPlayback[reel.id] ?? true) ? <Pause className="size-4" /> : <Play className="size-4 fill-current" />}
               </button>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-6">
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-5 pb-4">
               <div className="min-w-0 flex-1">
                 {reel.creator_id ? (
                   <Link
@@ -597,7 +603,7 @@ export default function ReelsPage() {
                   <Music2 className="size-4" /> {reel.audio_label || 'Original sound · DestiVerse'}
                 </button>
               </div>
-              <div className="grid gap-3">
+              <div className="relative z-20 flex flex-col items-center gap-3 pr-1">
                 <button
                   type="button"
                   onClick={() => void toggleLove(reel, 'button')}
@@ -609,7 +615,7 @@ export default function ReelsPage() {
                       className={`size-4 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)] drop-shadow-[0_0_12px_rgba(255,90,140,0.9)]' : ''}`}
                     />
                   </span>
-                  <span className="text-[10px] font-bold">{totalLikesFor(reel)} Like{totalLikesFor(reel) === 1 ? '' : 's'}</span>
+                  <span className="text-[10px] font-bold">{totalLikesFor(reel)}</span>
                 </button>
                 <button
                   type="button"
@@ -623,17 +629,6 @@ export default function ReelsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => boostReelLikes(reel)}
-                  disabled={(reelBoosts[reel.id] ?? 0) >= 2}
-                  className="grid justify-items-center gap-1 text-white disabled:opacity-50"
-                >
-                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <Sparkles className="size-4" />
-                  </span>
-                  <span className="text-[10px] font-bold">{(reelBoosts[reel.id] ?? 0) >= 2 ? 'Boosted' : 'Boost +5'}</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => void shareReel(reel)}
                   className="grid justify-items-center gap-1 text-white"
                 >
@@ -642,20 +637,42 @@ export default function ReelsPage() {
                   </span>
                   <span className="text-[10px] font-bold">Share</span>
                 </button>
-                {!reel.demo && session ? <><button type="button" onClick={() => void markNotInterested(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur"><EyeOff className="size-4" /></span><span className="text-[10px] font-bold">Skip</span></button><button type="button" onClick={() => void reportReel(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur"><Flag className="size-4" /></span><span className="text-[10px] font-bold">Report</span></button><button type="button" onClick={() => {
-                        const next = !(videoMutedByReel[reel.id] ?? false);
-                        setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
-                        const video = videoRefs.current[reel.id];
-                        if (video) {
-                          video.muted = next;
-                          if (reel.id === activeReelId && !next) void video.play().catch(() => undefined);
-                        }
-                      }} className="grid justify-items-center gap-1 text-white"><span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">{videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</span><span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span></button></> : null}
-                {!reel.demo ? (
-                  <button type="button" onClick={() => { setSearchOpen(true); setSearchQuery(reel.audio_label || 'original sound'); rememberSearch(reel.audio_label || 'original sound'); }} className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-2.5 py-1.5 text-[10px] font-bold text-white">
-                    <Music2 className="size-3.5" /> Use sound
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !(videoMutedByReel[reel.id] ?? false);
+                    setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
+                    const video = videoRefs.current[reel.id];
+                    if (video) {
+                      video.muted = next;
+                      if (reel.id === activeReelId && !next) void video.play().catch(() => undefined);
+                    }
+                  }}
+                  className="grid justify-items-center gap-1 text-white"
+                  aria-label={videoMutedByReel[reel.id] ?? false ? 'Unmute audio' : 'Mute audio'}
+                >
+                  <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
+                    {videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                  </span>
+                  <span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span>
+                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMoreActionsReelId((current) => current === reel.id ? null : reel.id)}
+                    className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur text-white"
+                    aria-label="More reel actions"
+                  >
+                    <MoreHorizontal className="size-4" />
                   </button>
-                ) : null}
+                  {moreActionsReelId === reel.id ? (
+                    <div className="absolute bottom-12 right-0 z-40 w-40 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl backdrop-blur">
+                      <button type="button" onClick={() => { boostReelLikes(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Boost +5</span><Sparkles className="size-3.5" /></button>
+                      {!reel.demo && session ? <><button type="button" onClick={() => { void markNotInterested(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Skip</span><EyeOff className="size-3.5" /></button><button type="button" onClick={() => { void reportReel(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Report</span><Flag className="size-3.5" /></button></> : null}
+                      {!reel.demo ? <button type="button" onClick={() => { setSearchOpen(true); setSearchQuery(reel.audio_label || 'original sound'); rememberSearch(reel.audio_label || 'original sound'); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Use sound</span><Music2 className="size-3.5" /></button> : null}
+                    </div>
+                  ) : null}
+                </div>
                 {reel.demo ? (
                   <Link
                     to="/dashboard/create-reel"
