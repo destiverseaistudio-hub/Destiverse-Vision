@@ -141,8 +141,8 @@ export default function ReelsPage() {
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
   const reelSwipeStart = useRef<{ y: number; x: number } | null>(null);
-  const holdTimerRef = useRef<number | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const lastCenterTapRef = useRef<Record<string, number>>({});
 
   const [prevSearch, setPrevSearch] = useState(normalizedSearch);
   if (normalizedSearch !== prevSearch) {
@@ -419,11 +419,32 @@ export default function ReelsPage() {
     const userLabel = session?.user.user_metadata?.display_name || session?.user.user_metadata?.full_name || session?.user.email?.split('@')[0];
     return userLabel || 'User';
   };
+  const normalizeSoundValue = (value?: string | null) => (value ?? 'Original sound · DestiVerse').trim().replace(/\s+/g, ' ');
+  const soundPagePath = (reel: Reel) => `/dashboard/sounds/${encodeURIComponent(normalizeSoundValue(reel.audio_label))}`;
   const triggerSoundSearch = (reel: Reel) => {
-    const sound = reel.audio_label || 'original sound';
+    const sound = normalizeSoundValue(reel.audio_label);
     setSearchOpen(true);
     setSearchQuery(sound);
     rememberSearch(sound);
+  };
+  const handleCenterTap = (reel: Reel) => {
+    const now = Date.now();
+    const lastTap = lastCenterTapRef.current[reel.id] ?? 0;
+    lastCenterTapRef.current[reel.id] = now;
+
+    if (now - lastTap < 260) {
+      void toggleLove(reel, 'double-tap');
+      lastCenterTapRef.current[reel.id] = 0;
+      return;
+    }
+
+    const video = videoRefs.current[reel.id];
+    if (!video) return;
+
+    const shouldPlay = video.paused;
+    setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
+    if (shouldPlay) void video.play().catch(() => undefined);
+    else video.pause();
   };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
@@ -511,33 +532,7 @@ export default function ReelsPage() {
               />
             )}
             {!reel.demo ? (
-              <div
-                className="absolute inset-0 z-10"
-                onClick={() => {
-                  const video = videoRefs.current[reel.id];
-                  if (!video) return;
-                  const shouldPlay = video.paused;
-                  setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
-                  if (shouldPlay) void video.play().catch(() => undefined);
-                  else video.pause();
-                }}
-                onPointerDown={() => {
-                  if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
-                  holdTimerRef.current = window.setTimeout(() => setShareReelTarget(reel), 500);
-                }}
-                onPointerUp={() => {
-                  if (holdTimerRef.current) {
-                    window.clearTimeout(holdTimerRef.current);
-                    holdTimerRef.current = null;
-                  }
-                }}
-                onPointerLeave={() => {
-                  if (holdTimerRef.current) {
-                    window.clearTimeout(holdTimerRef.current);
-                    holdTimerRef.current = null;
-                  }
-                }}
-              />
+              <div className="absolute inset-0 z-10" onClick={() => handleCenterTap(reel)} />
             ) : null}
             {reelLoading[reel.id] ? (
               <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
@@ -599,9 +594,15 @@ export default function ReelsPage() {
                 </span>
                 <h2 className="mt-3 text-2xl font-black text-white">{reel.title}</h2>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-white/80">{reel.caption}</p>
-                <button type="button" onClick={() => triggerSoundSearch(reel)} className="mt-4 flex items-center gap-2 text-xs text-white/70 hover:text-white">
-                  <Music2 className="size-4" /> {reel.audio_label || 'Original sound · DestiVerse'}
-                </button>
+                <div className="mt-4 flex flex-col items-start gap-2">
+                  <Link to={soundPagePath(reel)} className="inline-flex items-center gap-2 text-xs text-white/75 hover:text-white">
+                    <Music2 className="size-4" />
+                    <span>{reel.audio_label || 'Original sound · DestiVerse'}</span>
+                  </Link>
+                  <button type="button" onClick={() => triggerSoundSearch(reel)} className="rounded-full border border-white/15 bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white/85 hover:text-white">
+                    Use sound
+                  </button>
+                </div>
               </div>
               <div className="relative z-20 flex flex-col items-center gap-3 pr-1">
                 <button
@@ -669,7 +670,7 @@ export default function ReelsPage() {
                     <div className="absolute bottom-12 right-0 z-40 w-40 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl backdrop-blur">
                       <button type="button" onClick={() => { boostReelLikes(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Boost +5</span><Sparkles className="size-3.5" /></button>
                       {!reel.demo && session ? <><button type="button" onClick={() => { void markNotInterested(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Skip</span><EyeOff className="size-3.5" /></button><button type="button" onClick={() => { void reportReel(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Report</span><Flag className="size-3.5" /></button></> : null}
-                      {!reel.demo ? <button type="button" onClick={() => { setSearchOpen(true); setSearchQuery(reel.audio_label || 'original sound'); rememberSearch(reel.audio_label || 'original sound'); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Use sound</span><Music2 className="size-3.5" /></button> : null}
+                      {!reel.demo ? <button type="button" onClick={() => { setMoreActionsReelId(null); window.location.href = soundPagePath(reel); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Open sound</span><Music2 className="size-3.5" /></button> : null}
                     </div>
                   ) : null}
                 </div>
