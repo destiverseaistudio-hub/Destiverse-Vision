@@ -6,6 +6,7 @@ import {
   Flag,
   MessageCircle,
   Music2,
+  Pause,
   Play,
   Search,
   Share2,
@@ -109,7 +110,16 @@ export default function ReelsPage() {
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [videoMutedByReel, setVideoMutedByReel] = useState<Record<string, boolean>>({});
-  const [reelBoosts, setReelBoosts] = useState<Record<string, number>>({});
+  const [reelBoosts, setReelBoosts] = useState<Record<string, number>>(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem('destiverse-reel-boosts') ?? '{}');
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch {
+      return {};
+    }
+  });
+  const [reelPlayback, setReelPlayback] = useState<Record<string, boolean>>({});
+  const [likedBurstId, setLikedBurstId] = useState<string | null>(null);
   const [commentDisplayNames, setCommentDisplayNames] = useState<Record<string, string>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,6 +147,9 @@ export default function ReelsPage() {
     }
   }
 
+  useEffect(() => {
+    window.localStorage.setItem('destiverse-reel-boosts', JSON.stringify(reelBoosts));
+  }, [reelBoosts]);
   useEffect(() => {
     if (!normalizedSearch) return;
     let active = true;
@@ -220,11 +233,15 @@ export default function ReelsPage() {
         isFollowing ? current.filter((id) => id !== creatorId) : [...current, creatorId],
       );
   };
-  const move = (direction: 1 | -1) =>
-    feedRef.current?.scrollBy({
-      top: direction * feedRef.current.clientHeight,
-      behavior: 'smooth',
-    });
+  const move = (direction: 1 | -1) => {
+    if (!feedRef.current) return;
+    const cards = Array.from(feedRef.current.querySelectorAll<HTMLElement>('[data-reel-id]'));
+    const activeId = activeReelId ?? cards[0]?.dataset.reelId ?? null;
+    const currentIndex = cards.findIndex((card) => card.dataset.reelId === activeId);
+    const nextIndex = Math.min(cards.length - 1, Math.max(0, currentIndex + direction));
+    const target = cards[nextIndex];
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const beginReelSwipe = (event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0];
     if (touch) reelSwipeStart.current = { y: touch.clientY, x: touch.clientX };
@@ -239,22 +256,21 @@ export default function ReelsPage() {
     if (Math.abs(verticalDistance) < 56 || Math.abs(verticalDistance) <= Math.abs(horizontalDistance)) return;
     move(verticalDistance < 0 ? 1 : -1);
   };
-  const toggleLove = async (reel: Reel) => {
+  const toggleLove = async (reel: Reel, source: 'button' | 'double-tap' = 'button') => {
     if (!session || reel.demo) return;
     const loved = liked.includes(reel.id);
-    const { error } = loved
-      ? await supabase
-          .from('reel_reactions')
-          .delete()
-          .eq('reel_id', reel.id)
-          .eq('user_id', session.user.id)
-      : await supabase
-          .from('reel_reactions')
-          .insert({ reel_id: reel.id, user_id: session.user.id, reaction: 'love' });
-    if (!error)
-      setLiked((current) =>
-        loved ? current.filter((id) => id !== reel.id) : [...current, reel.id],
-      );
+    if (source === 'double-tap' && loved) return;
+    if (source === 'double-tap') {
+      setLikedBurstId(reel.id);
+      setTimeout(() => setLikedBurstId((current) => (current === reel.id ? null : current)), 500);
+    }
+    if (loved) return;
+    const { error } = await supabase
+      .from('reel_reactions')
+      .insert({ reel_id: reel.id, user_id: session.user.id, reaction: 'love' })
+      .select('id')
+      .single();
+    if (!error) setLiked((current) => [...new Set([...current, reel.id])]);
   };
   const trackView = async (reel: Reel) => {
     if (!session || reel.demo) return;
@@ -362,9 +378,11 @@ export default function ReelsPage() {
     else await navigator.clipboard?.writeText(url);
   };
   const boostReelLikes = (reel: Reel) => {
+    const currentBoosts = reelBoosts[reel.id] ?? 0;
+    if (currentBoosts >= 2) return;
     setReelBoosts((current) => ({
       ...current,
-      [reel.id]: (current[reel.id] ?? 0) + 1,
+      [reel.id]: Math.min(2, (current[reel.id] ?? 0) + 1),
     }));
   };
   const totalLikesFor = (reel: Reel) => (liked.includes(reel.id) ? 1 : 0) + (reelBoosts[reel.id] ?? 0) * 5;
@@ -403,18 +421,23 @@ export default function ReelsPage() {
     feed.forEach((reel) => {
       const video = videoRefs.current[reel.id];
       if (!video) return;
-      const muted = videoMutedByReel[reel.id] ?? true;
+      const isCurrent = reel.id === activeReelId;
+      const shouldPlay = isCurrent && (reelPlayback[reel.id] ?? true);
+      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? false);
       video.muted = muted;
-      if (reel.id === activeReelId) {
-        video.play().catch(() => undefined);
+      if (shouldPlay) {
+        void video.play().catch(() => undefined);
         video.setAttribute('data-play-state', 'active');
       } else {
         video.pause();
-        video.currentTime = 0;
         video.setAttribute('data-play-state', 'paused');
       }
+      if (!isCurrent) {
+        video.pause();
+        video.currentTime = 0;
+      }
     });
-  }, [feed, activeReelId, videoMutedByReel]);
+  }, [feed, activeReelId, reelPlayback, videoMutedByReel]);
   return (
     <main className="relative mx-auto max-w-[520px] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
@@ -433,7 +456,7 @@ export default function ReelsPage() {
         className="h-[calc(100dvh-5rem)] min-h-[580px] snap-y snap-mandatory overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} className="relative grid h-full min-h-[580px] snap-start place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y">
+          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y" onDoubleClick={() => void toggleLove(reel, 'double-tap')}>
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
@@ -446,41 +469,64 @@ export default function ReelsPage() {
                 src={reel.video_url}
                 playsInline
                 loop
-                muted={videoMutedByReel[reel.id] ?? true}
+                muted={videoMutedByReel[reel.id] ?? false}
                 preload="metadata"
                 onPlay={() => void trackView(reel)}
                 onClick={() => {
-                  const shouldMute = !(videoMutedByReel[reel.id] ?? true);
-                  setVideoMutedByReel((current) => ({ ...current, [reel.id]: !shouldMute }));
+                  const shouldPlay = !(reelPlayback[reel.id] ?? true);
+                  setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
                   const video = videoRefs.current[reel.id];
-                  if (video) {
-                    video.muted = !shouldMute;
+                  if (!video) return;
+                  if (shouldPlay) {
                     void video.play().catch(() => undefined);
+                  } else {
+                    video.pause();
                   }
                 }}
               />
             )}
+            {likedBurstId === reel.id ? (
+              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                <div className="animate-[ping_0.7s_ease-out_forwards] text-6xl text-[var(--dv-accent)]">♥</div>
+              </div>
+            ) : null}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/35" />
             {!reel.demo ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !(videoMutedByReel[reel.id] ?? true);
-                  setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
-                  const video = videoRefs.current[reel.id];
-                  if (video) {
-                    video.muted = next;
-                    if (!next) void video.play().catch(() => undefined);
-                    if (reel.id === activeReelId && next) {
-                      video.currentTime = Math.max(0, video.currentTime || 0);
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const isPlaying = reelPlayback[reel.id] ?? true;
+                    const next = !isPlaying;
+                    setReelPlayback((current) => ({ ...current, [reel.id]: next }));
+                    const video = videoRefs.current[reel.id];
+                    if (video) {
+                      if (next) void video.play().catch(() => undefined);
+                      else video.pause();
                     }
-                  }
-                }}
-                className="absolute bottom-28 right-5 z-10 grid size-11 place-items-center rounded-full border border-white/10 bg-black/45 text-white shadow-lg backdrop-blur"
-                aria-label={videoMutedByReel[reel.id] ?? true ? 'Unmute audio' : 'Mute audio'}
-              >
-                {videoMutedByReel[reel.id] ?? true ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
-              </button>
+                  }}
+                  className="absolute left-5 top-24 z-10 grid size-10 place-items-center rounded-full border border-white/10 bg-black/45 text-white shadow-lg backdrop-blur"
+                  aria-label={reelPlayback[reel.id] ?? true ? 'Pause video' : 'Play video'}
+                >
+                  {(reelPlayback[reel.id] ?? true) ? <Pause className="size-4" /> : <Play className="size-4 fill-current" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !(videoMutedByReel[reel.id] ?? false);
+                    setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
+                    const video = videoRefs.current[reel.id];
+                    if (video) {
+                      video.muted = next;
+                      if (reel.id === activeReelId && !next) void video.play().catch(() => undefined);
+                    }
+                  }}
+                  className="absolute bottom-28 right-5 z-10 grid size-10 place-items-center rounded-full border border-white/10 bg-black/45 text-white shadow-lg backdrop-blur"
+                  aria-label={videoMutedByReel[reel.id] ?? false ? 'Unmute audio' : 'Mute audio'}
+                >
+                  {videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                </button>
+              </>
             ) : null}
             <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-6">
               <div className="min-w-0 flex-1">
@@ -518,13 +564,13 @@ export default function ReelsPage() {
               <div className="grid gap-4">
                 <button
                   type="button"
-                  onClick={() => void toggleLove(reel)}
+                  onClick={() => void toggleLove(reel, 'button')}
                   disabled={reel.demo || !session}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
+                  <span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur transition-transform duration-200 hover:scale-105">
                     <Heart
-                      className={`size-5 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)]' : ''}`}
+                      className={`size-4 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)] drop-shadow-[0_0_12px_rgba(255,90,140,0.9)]' : ''}`}
                     />
                   </span>
                   <span className="text-[10px] font-bold">{totalLikesFor(reel)} Like{totalLikesFor(reel) === 1 ? '' : 's'}</span>
@@ -534,32 +580,41 @@ export default function ReelsPage() {
                   onClick={() => setCommentReel(reel)}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <MessageCircle className="size-5" />
+                  <span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur">
+                    <MessageCircle className="size-4" />
                   </span>
                   <span className="text-[10px] font-bold">Comment</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => boostReelLikes(reel)}
-                  className="grid justify-items-center gap-1 text-white"
+                  disabled={(reelBoosts[reel.id] ?? 0) >= 2}
+                  className="grid justify-items-center gap-1 text-white disabled:opacity-50"
                 >
-                  <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <Sparkles className="size-5" />
+                  <span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur">
+                    <Sparkles className="size-4" />
                   </span>
-                  <span className="text-[10px] font-bold">Boost +5</span>
+                  <span className="text-[10px] font-bold">{(reelBoosts[reel.id] ?? 0) >= 2 ? 'Boosted' : 'Boost +5'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => void shareReel(reel)}
                   className="grid justify-items-center gap-1 text-white"
                 >
-                  <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <Share2 className="size-5" />
+                  <span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur">
+                    <Share2 className="size-4" />
                   </span>
                   <span className="text-[10px] font-bold">Share</span>
                 </button>
-                {!reel.demo && session ? <><button type="button" onClick={() => void markNotInterested(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur"><EyeOff className="size-5" /></span><span className="text-[10px] font-bold">Skip</span></button><button type="button" onClick={() => void reportReel(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur"><Flag className="size-5" /></span><span className="text-[10px] font-bold">Report</span></button></> : null}
+                {!reel.demo && session ? <><button type="button" onClick={() => void markNotInterested(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur"><EyeOff className="size-4" /></span><span className="text-[10px] font-bold">Skip</span></button><button type="button" onClick={() => void reportReel(reel)} className="grid justify-items-center gap-1 text-white"><span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur"><Flag className="size-4" /></span><span className="text-[10px] font-bold">Report</span></button><button type="button" onClick={() => {
+                        const next = !(videoMutedByReel[reel.id] ?? false);
+                        setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
+                        const video = videoRefs.current[reel.id];
+                        if (video) {
+                          video.muted = next;
+                          if (reel.id === activeReelId && !next) void video.play().catch(() => undefined);
+                        }
+                      }} className="grid justify-items-center gap-1 text-white"><span className="grid size-10 place-items-center rounded-full bg-black/45 backdrop-blur">{videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</span><span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span></button></> : null}
                 {reel.demo ? (
                   <Link
                     to="/dashboard/create-reel"
@@ -595,7 +650,7 @@ export default function ReelsPage() {
           <ChevronDown className="size-5" />
         </button>
       </div>
-      <Link to="/dashboard/create-reel" className="fixed bottom-5 right-5 z-[60] grid size-14 place-items-center rounded-full bg-[var(--dv-accent)] text-2xl font-black text-white shadow-2xl md:hidden" aria-label="Create a Reel">+</Link>
+      <Link to="/dashboard/create-reel" className="absolute right-4 top-20 z-[60] grid size-11 place-items-center rounded-full bg-[var(--dv-accent)] text-2xl font-black text-white shadow-xl md:hidden" aria-label="Create a Reel">+</Link>
       {commentReel ? (
         <div className="fixed inset-0 z-[80] flex items-end bg-black/70 p-0 sm:items-center sm:justify-center sm:p-5">
           <section className="max-h-[78dvh] w-full max-w-lg rounded-t-3xl border border-white/10 bg-[var(--dv-surface)] p-5 sm:rounded-3xl">

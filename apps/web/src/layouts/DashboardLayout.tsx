@@ -47,7 +47,7 @@ export default function DashboardLayout() {
             {!isReelsExperience ? <AppFooter /> : null}
           </div>
         </div>
-        {!isReelsExperience ? <MobileBottomNav /> : null}
+        <MobileBottomNav />
         <ViewerAiAssistant />
       </div>
     </MaintenanceGate>
