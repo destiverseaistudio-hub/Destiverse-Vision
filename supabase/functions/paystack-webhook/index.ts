@@ -25,7 +25,7 @@ Deno.serve(async (request) => {
   if (!order) return new Response("ok", { status: 200 })
   const verification = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(order.reference)}`, { headers: { Authorization: `Bearer ${secret}` } })
   const verified = await verification.json(); const payment = verified?.data
-  if (!verification.ok || payment?.status !== "success" || Number(payment?.amount) !== order.amount_cents || String(payment?.currency || "").toUpperCase() !== order.currency.toUpperCase()) return new Response("Verification failed", { status: 400 })
+  if (!verification.ok || payment?.status !== "success" || payment?.reference !== order.reference || Number(payment?.amount) !== order.amount_cents || String(payment?.currency || "").toUpperCase() !== order.currency.toUpperCase()) return new Response("Verification failed", { status: 400 })
   const { data: claimed } = await admin.from("payment_orders").update({ status: "paid", provider_transaction_id: String(payment.id), paid_at: payment.paid_at || new Date().toISOString() }).eq("id", order.id).eq("status", "pending").select("id").maybeSingle()
   if (!claimed) return new Response("ok", { status: 200 })
   if (order.purpose === "coins") {

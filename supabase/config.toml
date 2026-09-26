@@ -1,0 +1,4 @@
+[functions.paystack-webhook]
+# Paystack does not send a Supabase JWT. The function verifies the
+# x-paystack-signature HMAC with PAYSTACK_SECRET_KEY before processing an event.
+verify_jwt = false
