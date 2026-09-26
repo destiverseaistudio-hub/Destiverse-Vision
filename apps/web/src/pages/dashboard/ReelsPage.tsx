@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   ChevronUp,
+  Eye,
   Heart,
   EyeOff,
   Flag,
@@ -36,6 +37,7 @@ type Reel = {
 };
 type Comment = { id: string; body: string; created_at: string; user_id: string; profile_name?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
+type Engagement = { reel_id: string; likes: number | string; views: number | string };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
 const demos: Reel[] = [
   [
@@ -102,6 +104,7 @@ export default function ReelsPage() {
   const [reels, setReels] = useState<Reel[]>([]);
   const [liked, setLiked] = useState<string[]>([]);
   const [reelLikeCounts, setReelLikeCounts] = useState<Record<string, number>>({});
+  const [reelViewCounts, setReelViewCounts] = useState<Record<string, number>>({});
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
   const [notInterested, setNotInterested] = useState<string[]>([]);
@@ -112,14 +115,6 @@ export default function ReelsPage() {
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [videoMutedByReel, setVideoMutedByReel] = useState<Record<string, boolean>>({});
-  const [reelBoosts, setReelBoosts] = useState<Record<string, number>>(() => {
-    try {
-      const saved = JSON.parse(window.localStorage.getItem('destiverse-reel-boosts') ?? '{}');
-      return saved && typeof saved === 'object' ? saved : {};
-    } catch {
-      return {};
-    }
-  });
   const [reelPlayback, setReelPlayback] = useState<Record<string, boolean>>({});
   const [reelLoading, setReelLoading] = useState<Record<string, boolean>>({});
   const [likedBurstId, setLikedBurstId] = useState<string | null>(null);
@@ -141,7 +136,6 @@ export default function ReelsPage() {
   const normalizedSearch = searchQuery.trim().toLowerCase().replace(/^@/, '');
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
-  const reelSwipeStart = useRef<{ y: number; x: number } | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const lastCenterTapRef = useRef<Record<string, number>>({});
   const centerTapTimeoutRef = useRef<Record<string, number | null>>({});
@@ -154,9 +148,6 @@ export default function ReelsPage() {
     }
   }
 
-  useEffect(() => {
-    window.localStorage.setItem('destiverse-reel-boosts', JSON.stringify(reelBoosts));
-  }, [reelBoosts]);
   useEffect(() => {
     if (!normalizedSearch) return;
     let active = true;
@@ -187,12 +178,20 @@ export default function ReelsPage() {
           return { ...reel, video_url: url?.signedUrl ?? reel.video_url };
         }),
       );
-      const { data: reactionRows } = await supabase.from('reel_reactions').select('reel_id').eq('reaction', 'love');
-      const counts = (reactionRows ?? []).reduce<Record<string, number>>((accumulator, row) => {
-        accumulator[row.reel_id] = (accumulator[row.reel_id] ?? 0) + 1;
+      const ids = (data ?? []).map((reel) => reel.id);
+      const { data: engagement } = ids.length
+        ? await supabase.rpc('get_public_reel_engagement', { reel_ids: ids })
+        : { data: [] };
+      const counts = ((engagement ?? []) as Engagement[]).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = Number(row.likes);
+        return accumulator;
+      }, {});
+      const viewCounts = ((engagement ?? []) as Engagement[]).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = Number(row.views);
         return accumulator;
       }, {});
       setReelLikeCounts(counts);
+      setReelViewCounts(viewCounts);
       setReels(signed as unknown as Reel[]);
     };
     void load();
@@ -248,30 +247,7 @@ export default function ReelsPage() {
   };
   const move = (direction: 1 | -1) => {
     if (!feedRef.current) return;
-    const cards = Array.from(feedRef.current.querySelectorAll<HTMLElement>('[data-reel-id]'));
-    const activeId = activeReelId ?? cards[0]?.dataset.reelId ?? null;
-    const currentIndex = cards.findIndex((card) => card.dataset.reelId === activeId);
-    const nextIndex = Math.min(cards.length - 1, Math.max(0, currentIndex + direction));
-    const target = cards[nextIndex];
-    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  const beginReelSwipe = (event: React.TouchEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement | null;
-    if (target && target.closest('button, a, input, textarea')) return;
-    const touch = event.touches[0];
-    if (touch) reelSwipeStart.current = { y: touch.clientY, x: touch.clientX };
-  };
-  const finishReelSwipe = (event: React.TouchEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement | null;
-    if (target && target.closest('button, a, input, textarea')) return;
-    const start = reelSwipeStart.current;
-    const touch = event.changedTouches[0];
-    reelSwipeStart.current = null;
-    if (!start || !touch) return;
-    const verticalDistance = touch.clientY - start.y;
-    const horizontalDistance = touch.clientX - start.x;
-    if (Math.abs(verticalDistance) < 56 || Math.abs(verticalDistance) <= Math.abs(horizontalDistance)) return;
-    move(verticalDistance < 0 ? 1 : -1);
+    feedRef.current.scrollBy({ top: feedRef.current.clientHeight * direction, behavior: 'smooth' });
   };
   const toggleLove = async (reel: Reel, source: 'button' | 'double-tap' = 'button') => {
     if (!session || reel.demo) return;
@@ -285,7 +261,7 @@ export default function ReelsPage() {
       .from('reel_reactions')
       .upsert(
         { reel_id: reel.id, user_id: session.user.id, reaction: 'love' },
-        { onConflict: 'reel_id,user_id,reaction', ignoreDuplicates: true },
+        { onConflict: 'reel_id,user_id', ignoreDuplicates: true },
       )
       .select('id')
       .single();
@@ -420,15 +396,7 @@ export default function ReelsPage() {
       await navigator.share({ title: reel.title, text: reel.caption, url }).catch(() => undefined);
     else await navigator.clipboard?.writeText(url);
   };
-  const boostReelLikes = (reel: Reel) => {
-    const currentBoosts = reelBoosts[reel.id] ?? 0;
-    if (currentBoosts >= 2) return;
-    setReelBoosts((current) => {
-      const next = Math.min(2, (current[reel.id] ?? 0) + 1);
-      return { ...current, [reel.id]: next };
-    });
-  };
-  const totalLikesFor = (reel: Reel) => (reelLikeCounts[reel.id] ?? 0) + (reelBoosts[reel.id] ?? 0) * 5;
+  const totalLikesFor = (reel: Reel) => reelLikeCounts[reel.id] ?? 0;
   const getCommentAuthorName = (comment: Comment) => {
     if (commentDisplayNames[comment.user_id]) return commentDisplayNames[comment.user_id];
     if (comment.profile_name) return comment.profile_name;
@@ -516,7 +484,7 @@ export default function ReelsPage() {
     });
   }, [feed, activeReelId, reelPlayback, videoMutedByReel]);
   return (
-    <main className="relative mx-auto max-w-[520px] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl">
+    <main className="relative mx-auto h-full min-h-0 max-w-[520px] overflow-hidden bg-black shadow-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.24em] text-[var(--dv-accent)]">
@@ -530,10 +498,10 @@ export default function ReelsPage() {
       {searchOpen ? <div className="absolute inset-x-3 top-3 z-40 rounded-2xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur"><div className="flex items-center gap-2"><Search className="ml-2 size-5 shrink-0 text-slate-400" /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') rememberSearch(); }} placeholder="Search creator, Reel, or #hashtag" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-slate-500" /><button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(''); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-300 hover:bg-white/10" aria-label="Close Reel search"><X className="size-5" /></button></div>{normalizedSearch ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Creator results</p>{creatorSearchResults.length ? creatorSearchResults.map(creator => <button type="button" key={creator.user_id} onClick={() => { rememberSearch(); navigate(`/dashboard/creator/${creator.user_id}`); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-white/10"><span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[var(--dv-accent)]/20 text-xs font-black text-[var(--dv-accent)]">{creator.avatar_url ? <img src={creator.avatar_url} alt="" className="size-full object-cover" /> : (creator.display_name || creator.handle).slice(0, 1).toUpperCase()}</span><span className="min-w-0"><strong className="block truncate text-sm text-white">{creator.display_name || creator.handle}</strong><span className="block truncate text-xs text-[var(--dv-accent)]">@{creator.handle}</span></span></button>) : <p className="px-2 py-2 text-xs text-slate-500">No public creator matches.</p>}</div> : recentSearches.length ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Recent searches</p><div className="flex flex-wrap gap-2 px-2 pb-1">{recentSearches.map(term => <button type="button" key={term} onClick={() => setSearchQuery(term)} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/15">{term}</button>)}</div></div> : null}</div> : null}
       <div
         ref={feedRef}
-        className="h-[calc(100dvh-5rem)] min-h-[580px] snap-y snap-mandatory overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} className="relative grid h-full min-h-[580px] snap-start place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y">
+        {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
+          <article key={reel.id} data-reel-id={reel.id} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
@@ -620,6 +588,7 @@ export default function ReelsPage() {
                   {reel.demo ? 'DEMO' : 'CREATOR'}
                 </span>
                 <h2 className="mt-3 text-2xl font-black text-white">{reel.title}</h2>
+                {!reel.demo ? <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/65"><Eye className="size-3.5" /> {reelViewCounts[reel.id] ?? 0} views</span> : null}
                 <p className="mt-2 max-w-sm text-sm leading-6 text-white/80">{reel.caption}</p>
                 <div className="mt-4 flex flex-col items-start gap-2">
                   <Link to={soundPagePath(reel)} className="inline-flex items-center gap-2 text-xs text-white/75 hover:text-white">
@@ -695,7 +664,6 @@ export default function ReelsPage() {
                   </button>
                   {moreActionsReelId === reel.id ? (
                     <div className="absolute bottom-12 right-0 z-40 w-40 rounded-2xl border border-white/10 bg-black/85 p-2 shadow-2xl backdrop-blur">
-                      <button type="button" onClick={() => { boostReelLikes(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Boost +5</span><Sparkles className="size-3.5" /></button>
                       {!reel.demo && session ? <><button type="button" onClick={() => { void markNotInterested(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Skip</span><EyeOff className="size-3.5" /></button><button type="button" onClick={() => { void reportReel(reel); setMoreActionsReelId(null); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Report</span><Flag className="size-3.5" /></button></> : null}
                       {!reel.demo ? <button type="button" onClick={() => { setMoreActionsReelId(null); window.location.href = soundPagePath(reel); }} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"><span>Open sound</span><Music2 className="size-3.5" /></button> : null}
                     </div>

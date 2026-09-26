@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { uploadWithRetry } from '@/services/uploads';
@@ -8,6 +8,7 @@ const maxReelUploadBytes = 50 * 1024 * 1024;
 
 export default function CreateReelPage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -21,7 +22,7 @@ export default function CreateReelPage() {
   const [busy, setBusy] = useState(false);
   const [soundFile, setSoundFile] = useState<File | null>(null);
   const [soundPreviewUrl, setSoundPreviewUrl] = useState('');
-  const [soundLabel, setSoundLabel] = useState('');
+  const [soundLabel, setSoundLabel] = useState(() => searchParams.get('sound') ?? '');
   useEffect(() => {
     if (!session) return;
     const load = async () => {
@@ -60,6 +61,9 @@ export default function CreateReelPage() {
     event.preventDefault();
     if (!session || !file || approval !== 'approved') return;
     const hasSoundSelection = Boolean(soundFile);
+    const selectedSoundLabel = hasSoundSelection
+      ? (soundFile?.name ?? 'selected-sound').replace(/\.[^/.]+$/, '')
+      : soundLabel.trim();
     if (dailyCount >= 10) {
       setMessage('Your daily 10-Reel limit has been reached. Try again tomorrow.');
       return;
@@ -72,8 +76,7 @@ export default function CreateReelPage() {
     setUploadStage('uploading');
     setMessage('');
     if (hasSoundSelection) {
-      const previewName = soundFile?.name ?? 'selected-sound';
-      setSoundLabel(previewName.replace(/\.[^/.]+$/, ''));
+      setSoundLabel(selectedSoundLabel);
     }
     const path = `${session.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
     const { error: uploadError } = await uploadWithRetry('creator-reels', path, file, { contentType: file.type, cacheControl: '31536000', upsert: false });
@@ -94,6 +97,7 @@ export default function CreateReelPage() {
         title: title.trim(),
         caption: caption.trim(),
         video_url: path,
+        audio_label: selectedSoundLabel || null,
       })
       .select('id,status')
       .single();

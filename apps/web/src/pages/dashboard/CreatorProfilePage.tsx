@@ -1,4 +1,4 @@
-import { ArrowLeft, Ban, Edit3, Eye, Film, Flag, Play, Plus, Share2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Ban, Edit3, Eye, Film, Flag, Heart, Play, Plus, Share2, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ type Reel = {
   video_url: string;
   poster_url: string | null;
 };
+type Engagement = { reel_id: string; likes: number | string; views: number | string };
 
 export default function CreatorProfilePage() {
   const { creatorId } = useParams();
@@ -23,6 +24,7 @@ export default function CreatorProfilePage() {
   const [following, setFollowing] = useState(0);
   const [likes, setLikes] = useState(0);
   const [views, setViews] = useState(0);
+  const [engagementByReel, setEngagementByReel] = useState<Record<string, { likes: number; views: number }>>({});
   const [isFollowing, setIsFollowing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [message, setMessage] = useState('');
@@ -87,28 +89,20 @@ export default function CreatorProfilePage() {
       setFollowers(followerCount ?? 0);
       setFollowing(followingCount ?? 0);
       if (reelData?.length) {
-        const { count } = await supabase
-          .from('reel_reactions')
-          .select('reel_id', { count: 'exact', head: true })
-          .in(
-            'reel_id',
-            reelData.map((reel) => reel.id),
-          )
-          .eq('reaction', 'love');
-        if (active) setLikes(count ?? 0);
-        if (isOwner) {
-          const { count: viewCount } = await supabase
-            .from('reel_view_events')
-            .select('id', { count: 'exact', head: true })
-            .in(
-              'reel_id',
-              reelData.map((reel) => reel.id),
-            );
-          if (active) setViews(viewCount ?? 0);
-        } else if (active) setViews(0);
+        const { data: engagement } = await supabase.rpc('get_public_reel_engagement', { reel_ids: reelData.map((reel) => reel.id) });
+        const nextEngagement = ((engagement ?? []) as Engagement[]).reduce<Record<string, { likes: number; views: number }>>((counts, row) => {
+          counts[row.reel_id] = { likes: Number(row.likes), views: Number(row.views) };
+          return counts;
+        }, {});
+        if (active) {
+          setEngagementByReel(nextEngagement);
+          setLikes(Object.values(nextEngagement).reduce((total, item) => total + item.likes, 0));
+          setViews(Object.values(nextEngagement).reduce((total, item) => total + item.views, 0));
+        }
       } else {
         setLikes(0);
         setViews(0);
+        setEngagementByReel({});
       }
       setIsFollowing(Boolean(follow.data));
       setIsBlocked(Boolean(block.data));
@@ -243,12 +237,10 @@ export default function CreatorProfilePage() {
             <b className="text-white">{likes}</b>
             <small className="ml-2 text-slate-400">likes</small>
           </span>
-          {canManage ? (
-            <span>
-              <b className="text-white">{views}</b>
-              <small className="ml-2 text-slate-400">unique daily views</small>
-            </span>
-          ) : null}
+          <span>
+            <b className="text-white">{views}</b>
+            <small className="ml-2 text-slate-400">views</small>
+          </span>
         </div>
       </header>
       <section className="mt-8">
@@ -260,7 +252,7 @@ export default function CreatorProfilePage() {
                 key={reel.id}
                 className="group overflow-hidden rounded-[1.4rem] border border-white/10 bg-[var(--dv-surface)] transition duration-300 hover:-translate-y-1 hover:border-[var(--dv-accent)]/60"
               >
-                <Link to={`/dashboard/reels?reel=${reel.id}`} className="block"><div className="relative h-60 overflow-hidden bg-black sm:h-72"><video muted loop playsInline autoPlay preload="metadata" poster={reel.poster_url ?? undefined} src={reel.video_url} className="size-full object-cover transition duration-500 group-hover:scale-105" /><div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black via-black/20 to-transparent" /><span className="absolute left-3 top-3 rounded-full bg-black/55 px-2 py-1 text-[9px] font-black uppercase tracking-[.14em] text-white backdrop-blur">DestiVerse cut</span><span className="absolute bottom-3 right-3 grid size-9 place-items-center rounded-full bg-white text-black shadow-lg"><Play className="size-4 fill-current" /></span></div><div className="border-l-2 border-[var(--dv-accent)] p-3"><h3 className="line-clamp-1 text-sm font-black text-white">{reel.title}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{reel.caption || 'Open this creator cut.'}</p></div></Link>
+                <Link to={`/dashboard/reels?reel=${reel.id}`} className="block"><div className="relative h-60 overflow-hidden bg-black sm:h-72"><video muted loop playsInline autoPlay preload="metadata" poster={reel.poster_url ?? undefined} src={reel.video_url} className="size-full object-cover transition duration-500 group-hover:scale-105" /><div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black via-black/20 to-transparent" /><span className="absolute left-3 top-3 rounded-full bg-black/55 px-2 py-1 text-[9px] font-black uppercase tracking-[.14em] text-white backdrop-blur">DestiVerse cut</span><span className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur"><Eye className="size-3" /> {engagementByReel[reel.id]?.views ?? 0}<Heart className="ml-1 size-3" /> {engagementByReel[reel.id]?.likes ?? 0}</span><span className="absolute bottom-3 right-3 grid size-9 place-items-center rounded-full bg-white text-black shadow-lg"><Play className="size-4 fill-current" /></span></div><div className="border-l-2 border-[var(--dv-accent)] p-3"><h3 className="line-clamp-1 text-sm font-black text-white">{reel.title}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{reel.caption || 'Open this creator cut.'}</p></div></Link>
               </article>
             ))}
           </div>

@@ -1,6 +1,7 @@
 import { ArrowLeft, Heart, Music2, Play, Share2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
 type Reel = {
@@ -17,9 +18,11 @@ type Reel = {
 export default function SoundPage() {
   const { soundKey } = useParams();
   const navigate = useNavigate();
+  const { session } = useAuth();
   const [reels, setReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
 
   const soundLabel = useMemo(() => {
     const decoded = decodeURIComponent(soundKey ?? 'Original sound · DestiVerse');
@@ -48,15 +51,39 @@ export default function SoundPage() {
         }),
       );
 
+      const ids = matches.map((reel) => reel.id);
+      const [{ data: reactions }, { data: myReactions }] = await Promise.all([
+        ids.length ? supabase.from('reel_reactions').select('reel_id').in('reel_id', ids).eq('reaction', 'love') : Promise.resolve({ data: [] }),
+        session && ids.length ? supabase.from('reel_reactions').select('reel_id').in('reel_id', ids).eq('user_id', session.user.id).eq('reaction', 'love') : Promise.resolve({ data: [] }),
+      ]);
+      setLikeCounts((reactions ?? []).reduce<Record<string, number>>((counts, reaction) => ({ ...counts, [reaction.reel_id]: (counts[reaction.reel_id] ?? 0) + 1 }), {}));
+      setLiked(Object.fromEntries((myReactions ?? []).map((reaction) => [reaction.reel_id, true])));
       setReels(withSignedUrls);
       setLoading(false);
     };
 
     void load();
-  }, [soundLabel]);
+  }, [soundLabel, session]);
 
-  const toggleLike = (reelId: string) => {
-    setLiked((current) => ({ ...current, [reelId]: !current[reelId] }));
+  const toggleLike = async (reelId: string) => {
+    if (!session) {
+      navigate('/login');
+      return;
+    }
+    if (liked[reelId]) return;
+    const { error } = await supabase.from('reel_reactions').upsert(
+      { reel_id: reelId, user_id: session.user.id, reaction: 'love' },
+      { onConflict: 'reel_id,user_id', ignoreDuplicates: true },
+    );
+    if (!error) {
+      setLiked((current) => ({ ...current, [reelId]: true }));
+      setLikeCounts((current) => ({ ...current, [reelId]: (current[reelId] ?? 0) + 1 }));
+    }
+  };
+  const shareReel = async (reel: Reel) => {
+    const url = `${window.location.origin}/dashboard/reels/${reel.id}`;
+    if (navigator.share) await navigator.share({ title: reel.title, text: reel.caption, url }).catch(() => undefined);
+    else await navigator.clipboard?.writeText(url);
   };
 
   return (
@@ -76,7 +103,7 @@ export default function SoundPage() {
             <p className="text-[10px] font-black uppercase tracking-[.22em] text-[var(--dv-accent)]">Sound</p>
             <h1 className="mt-2 text-3xl font-black text-white">{soundLabel}</h1>
           </div>
-          <button type="button" className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-sm font-black text-white">
+          <button type="button" onClick={() => navigate(`/dashboard/create-reel?sound=${encodeURIComponent(soundLabel)}`)} className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-sm font-black text-white">
             <Play className="size-4 fill-current" /> Use sound
           </button>
         </div>
@@ -122,10 +149,11 @@ export default function SoundPage() {
                   <p className="mt-1 text-xs text-slate-400">@{reel.creator_profiles?.handle || 'creator'}</p>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-300">
-                  <button type="button" onClick={(event) => { event.preventDefault(); toggleLike(reel.id); }} className="grid size-8 place-items-center rounded-full bg-white/5">
+                  <button type="button" onClick={(event) => { event.preventDefault(); void toggleLike(reel.id); }} className="grid size-8 place-items-center rounded-full bg-white/5" aria-label={liked[reel.id] ? 'Liked' : 'Like'}>
                     <Heart className={`size-3.5 ${liked[reel.id] ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)]' : ''}`} />
                   </button>
-                  <button type="button" onClick={(event) => { event.preventDefault(); }} className="grid size-8 place-items-center rounded-full bg-white/5">
+                  <span>{likeCounts[reel.id] ?? 0}</span>
+                  <button type="button" onClick={(event) => { event.preventDefault(); void shareReel(reel); }} className="grid size-8 place-items-center rounded-full bg-white/5" aria-label={`Share ${reel.title}`}>
                     <Share2 className="size-3.5" />
                   </button>
                 </div>
@@ -143,7 +171,7 @@ export default function SoundPage() {
           </div>
           <div className="flex items-center gap-2">
             <button type="button" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white">Preview</button>
-            <button type="button" className="rounded-full bg-[var(--dv-accent)] px-4 py-2 text-xs font-black text-white">Use sound</button>
+            <button type="button" onClick={() => navigate(`/dashboard/create-reel?sound=${encodeURIComponent(soundLabel)}`)} className="rounded-full bg-[var(--dv-accent)] px-4 py-2 text-xs font-black text-white">Use sound</button>
           </div>
         </div>
       </div>
