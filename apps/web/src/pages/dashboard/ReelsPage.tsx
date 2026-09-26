@@ -8,7 +8,7 @@ import {
   Music2,
   Play,
   Search,
-  Send,
+  Share2,
   Sparkles,
   Upload,
   Volume2,
@@ -30,8 +30,9 @@ type Reel = {
   creator_id?: string;
   creator_profiles?: { handle: string; display_name?: string | null; avatar_url?: string | null } | null;
   demo?: boolean;
+  audio_label?: string | null;
 };
-type Comment = { id: string; body: string; created_at: string; user_id: string };
+type Comment = { id: string; body: string; created_at: string; user_id: string; profile_name?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
 const demos: Reel[] = [
@@ -97,7 +98,6 @@ export default function ReelsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [reels, setReels] = useState<Reel[]>([]);
-  const [muted, setMuted] = useState(true);
   const [liked, setLiked] = useState<string[]>([]);
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
@@ -107,6 +107,10 @@ export default function ReelsPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState('');
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
+  const [activeReelId, setActiveReelId] = useState<string | null>(null);
+  const [videoMutedByReel, setVideoMutedByReel] = useState<Record<string, boolean>>({});
+  const [reelBoosts, setReelBoosts] = useState<Record<string, number>>({});
+  const [commentDisplayNames, setCommentDisplayNames] = useState<Record<string, string>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -123,6 +127,7 @@ export default function ReelsPage() {
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
   const reelSwipeStart = useRef<{ y: number; x: number } | null>(null);
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
   const [prevSearch, setPrevSearch] = useState(normalizedSearch);
   if (normalizedSearch !== prevSearch) {
@@ -281,10 +286,19 @@ export default function ReelsPage() {
   const requestedReel = requestedReelId ? defaultFeed.find(reel => reel.id === requestedReelId) : null;
   const focusedFeed = requestedReel ? [requestedReel, ...defaultFeed.filter(reel => reel.id !== requestedReel.id)] : defaultFeed;
   const matchedReels = [...eligibleReels, ...demos].filter(reel => {
-    const keywords = `${reel.title} ${reel.caption} ${reel.creator_profiles?.handle ?? ''} ${reel.creator_profiles?.display_name ?? ''}`.toLowerCase().replace(/[^a-z0-9#@]+/g, ' ');
+    const keywords = [
+      reel.title,
+      reel.caption,
+      reel.audio_label ?? '',
+      reel.creator_profiles?.handle ?? '',
+      reel.creator_profiles?.display_name ?? '',
+    ].join(' ').toLowerCase().replace(/[^a-z0-9#@\s]+/g, ' ');
     return searchTerms.every(term => keywords.includes(term));
   }).sort((left, right) => {
-    const score = (reel: Reel) => searchTerms.reduce((total, term) => total + (`${reel.title} ${reel.caption}`.toLowerCase().startsWith(term) ? 4 : 0) + (`${reel.title} ${reel.caption}`.toLowerCase().includes(term) ? 1 : 0), 0);
+    const score = (reel: Reel) => searchTerms.reduce((total, term) => {
+      const haystack = `${reel.title} ${reel.caption} ${reel.audio_label ?? ''} ${reel.creator_profiles?.handle ?? ''} ${reel.creator_profiles?.display_name ?? ''}`.toLowerCase();
+      return total + (haystack.startsWith(term) ? 4 : 0) + (haystack.includes(term) ? 1 : 0);
+    }, 0);
     return score(right) - score(left);
   });
   const feed = normalizedSearch ? matchedReels : focusedFeed;
@@ -297,7 +311,20 @@ export default function ReelsPage() {
       .eq('reel_id', commentReel.id)
       .eq('hidden', false)
       .order('created_at', { ascending: false })
-      .then(({ data }) => setComments((data ?? []) as Comment[]));
+      .then(async ({ data }) => {
+        const nextComments = (data ?? []) as Comment[];
+        setComments(nextComments);
+        const userIds = [...new Set(nextComments.map(comment => comment.user_id).filter(Boolean))];
+        if (!userIds.length) return;
+        const { data: profileRows } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
+        const names = Object.fromEntries((profileRows ?? []).map((profile) => [profile.id, profile.display_name || 'User'])) as Record<string, string>;
+        setCommentDisplayNames((current) => ({ ...current, ...names }));
+
+        if (session?.user?.id) {
+          const currentUserName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+          setCommentDisplayNames((current) => ({ ...current, [session.user.id]: currentUserName }));
+        }
+      });
   }, [commentReel]);
   const addComment = async () => {
     if (!session || !commentReel || !commentBody.trim()) return;
@@ -307,7 +334,9 @@ export default function ReelsPage() {
       .select('id,body,created_at,user_id')
       .single();
     if (!error && data) {
-      setComments((current) => [data as Comment, ...current]);
+      const authorLabel = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+      setCommentDisplayNames((current) => ({ ...current, [session.user.id]: authorLabel }));
+      setComments((current) => [{ ...(data as Comment), profile_name: authorLabel }, ...current]);
       setCommentBody('');
     }
   };
@@ -332,6 +361,60 @@ export default function ReelsPage() {
       await navigator.share({ title: reel.title, text: reel.caption, url }).catch(() => undefined);
     else await navigator.clipboard?.writeText(url);
   };
+  const boostReelLikes = (reel: Reel) => {
+    setReelBoosts((current) => ({
+      ...current,
+      [reel.id]: (current[reel.id] ?? 0) + 1,
+    }));
+  };
+  const totalLikesFor = (reel: Reel) => (liked.includes(reel.id) ? 1 : 0) + (reelBoosts[reel.id] ?? 0) * 5;
+  const getCommentAuthorName = (comment: Comment) => {
+    if (commentDisplayNames[comment.user_id]) return commentDisplayNames[comment.user_id];
+    if (comment.profile_name) return comment.profile_name;
+    const userLabel = session?.user.user_metadata?.display_name || session?.user.user_metadata?.full_name || session?.user.email?.split('@')[0];
+    return userLabel || 'User';
+  };
+  useEffect(() => {
+    if (!feedRef.current || !feed.length) return;
+    const container = feedRef.current;
+    const nodes = Array.from(container.querySelectorAll<HTMLElement>('[data-reel-id]'));
+    if (!nodes.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+        if (visible) {
+          const nextId = (visible.target as HTMLElement).dataset.reelId ?? null;
+          if (nextId) setActiveReelId(nextId);
+        }
+      },
+      { root: container, threshold: [0.6, 0.8] },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [feed]);
+  useEffect(() => {
+    if (!feed.length) return;
+    const videoIds = new Set(feed.map((reel) => reel.id));
+    Object.keys(videoRefs.current).forEach((id) => {
+      if (!videoIds.has(id)) delete videoRefs.current[id];
+    });
+    feed.forEach((reel) => {
+      const video = videoRefs.current[reel.id];
+      if (!video) return;
+      const muted = videoMutedByReel[reel.id] ?? true;
+      video.muted = muted;
+      if (reel.id === activeReelId) {
+        video.play().catch(() => undefined);
+        video.setAttribute('data-play-state', 'active');
+      } else {
+        video.pause();
+        video.currentTime = 0;
+        video.setAttribute('data-play-state', 'paused');
+      }
+    });
+  }, [feed, activeReelId, videoMutedByReel]);
   return (
     <main className="relative mx-auto max-w-[520px] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
@@ -350,23 +433,30 @@ export default function ReelsPage() {
         className="h-[calc(100dvh-5rem)] min-h-[580px] snap-y snap-mandatory overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} className="relative grid h-full min-h-[580px] snap-start place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y">
+          <article key={reel.id} data-reel-id={reel.id} onTouchStart={beginReelSwipe} onTouchEnd={finishReelSwipe} className="relative h-full min-h-[580px] snap-start bg-zinc-950 touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
               <video
+                ref={(node) => {
+                  if (node) videoRefs.current[reel.id] = node;
+                  else delete videoRefs.current[reel.id];
+                }}
                 className="absolute inset-0 h-full w-full object-cover"
                 src={reel.video_url}
                 playsInline
                 loop
-                muted={muted}
-                autoPlay
+                muted={videoMutedByReel[reel.id] ?? true}
                 preload="metadata"
                 onPlay={() => void trackView(reel)}
-                onClick={(event) => {
-                  event.currentTarget.muted = false;
-                  void event.currentTarget.play();
-                  setMuted(false);
+                onClick={() => {
+                  const shouldMute = !(videoMutedByReel[reel.id] ?? true);
+                  setVideoMutedByReel((current) => ({ ...current, [reel.id]: !shouldMute }));
+                  const video = videoRefs.current[reel.id];
+                  if (video) {
+                    video.muted = !shouldMute;
+                    void video.play().catch(() => undefined);
+                  }
                 }}
               />
             )}
@@ -374,10 +464,22 @@ export default function ReelsPage() {
             {!reel.demo ? (
               <button
                 type="button"
-                onClick={() => setMuted((value) => !value)}
-                className="absolute right-5 top-24 z-10 grid size-11 place-items-center rounded-full bg-black/45 text-white backdrop-blur"
+                onClick={() => {
+                  const next = !(videoMutedByReel[reel.id] ?? true);
+                  setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
+                  const video = videoRefs.current[reel.id];
+                  if (video) {
+                    video.muted = next;
+                    if (!next) void video.play().catch(() => undefined);
+                    if (reel.id === activeReelId && next) {
+                      video.currentTime = Math.max(0, video.currentTime || 0);
+                    }
+                  }
+                }}
+                className="absolute bottom-28 right-5 z-10 grid size-11 place-items-center rounded-full border border-white/10 bg-black/45 text-white shadow-lg backdrop-blur"
+                aria-label={videoMutedByReel[reel.id] ?? true ? 'Unmute audio' : 'Mute audio'}
               >
-                {muted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+                {videoMutedByReel[reel.id] ?? true ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
               </button>
             ) : null}
             <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-6">
@@ -425,7 +527,7 @@ export default function ReelsPage() {
                       className={`size-5 ${liked.includes(reel.id) ? 'fill-[var(--dv-accent)] text-[var(--dv-accent)]' : ''}`}
                     />
                   </span>
-                  <span className="text-[10px] font-bold">Love</span>
+                  <span className="text-[10px] font-bold">{totalLikesFor(reel)} Like{totalLikesFor(reel) === 1 ? '' : 's'}</span>
                 </button>
                 <button
                   type="button"
@@ -435,7 +537,17 @@ export default function ReelsPage() {
                   <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
                     <MessageCircle className="size-5" />
                   </span>
-                  <span className="text-[10px] font-bold">Reply</span>
+                  <span className="text-[10px] font-bold">Comment</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => boostReelLikes(reel)}
+                  className="grid justify-items-center gap-1 text-white"
+                >
+                  <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
+                    <Sparkles className="size-5" />
+                  </span>
+                  <span className="text-[10px] font-bold">Boost +5</span>
                 </button>
                 <button
                   type="button"
@@ -443,7 +555,7 @@ export default function ReelsPage() {
                   className="grid justify-items-center gap-1 text-white"
                 >
                   <span className="grid size-12 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    <Send className="size-5" />
+                    <Share2 className="size-5" />
                   </span>
                   <span className="text-[10px] font-bold">Share</span>
                 </button>
@@ -509,20 +621,23 @@ export default function ReelsPage() {
                     key={comment.id}
                     className="rounded-xl bg-black/20 p-3 text-sm text-slate-200"
                   >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <strong className="text-sm font-bold text-white">{getCommentAuthorName(comment)}</strong>
+                      {session && comment.user_id !== session.user.id ? (
+                        <button
+                          type="button"
+                          onClick={() => void reportComment(comment)}
+                          disabled={reportedCommentIds.includes(comment.id)}
+                          className="text-[10px] font-bold text-slate-400 disabled:opacity-50"
+                        >
+                          {reportedCommentIds.includes(comment.id) ? 'Reported' : 'Report'}
+                        </button>
+                      ) : null}
+                    </div>
                     <p>{comment.body}</p>
                     <time className="mt-2 block text-xs text-slate-500">
                       {new Date(comment.created_at).toLocaleString()}
                     </time>
-                    {session && comment.user_id !== session.user.id ? (
-                      <button
-                        type="button"
-                        onClick={() => void reportComment(comment)}
-                        disabled={reportedCommentIds.includes(comment.id)}
-                        className="mt-2 text-xs font-bold text-[var(--dv-accent)] disabled:opacity-50"
-                      >
-                        {reportedCommentIds.includes(comment.id) ? 'Reported' : 'Report'}
-                      </button>
-                    ) : null}
                   </article>
                 ))
               ) : (

@@ -19,6 +19,9 @@ export default function CreateReelPage() {
   const [message, setMessage] = useState('');
   const [uploadStage, setUploadStage] = useState<'idle' | 'uploading' | 'processing'>('idle');
   const [busy, setBusy] = useState(false);
+  const [soundFile, setSoundFile] = useState<File | null>(null);
+  const [soundPreviewUrl, setSoundPreviewUrl] = useState('');
+  const [soundLabel, setSoundLabel] = useState('');
   useEffect(() => {
     if (!session) return;
     const load = async () => {
@@ -56,6 +59,7 @@ export default function CreateReelPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!session || !file || approval !== 'approved') return;
+    const hasSoundSelection = Boolean(soundFile);
     if (dailyCount >= 10) {
       setMessage('Your daily 10-Reel limit has been reached. Try again tomorrow.');
       return;
@@ -67,6 +71,10 @@ export default function CreateReelPage() {
     setBusy(true);
     setUploadStage('uploading');
     setMessage('');
+    if (hasSoundSelection) {
+      const previewName = soundFile?.name ?? 'selected-sound';
+      setSoundLabel(previewName.replace(/\.[^/.]+$/, ''));
+    }
     const path = `${session.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
     const { error: uploadError } = await uploadWithRetry('creator-reels', path, file, { contentType: file.type, cacheControl: '31536000', upsert: false });
     if (uploadError) {
@@ -111,6 +119,9 @@ export default function CreateReelPage() {
     setTitle('');
     setCaption('');
     setFile(null);
+    setSoundFile(null);
+    setSoundPreviewUrl('');
+    setSoundLabel('');
     setUploadStage('idle');
     setBusy(false);
   }
@@ -173,6 +184,45 @@ export default function CreateReelPage() {
                 className="text-sm text-slate-300"
               />
             </label>
+            <label className="grid gap-2 text-sm font-semibold text-white">
+              Add sound preview
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  const nextFile = e.target.files?.[0] ?? null;
+                  setSoundFile(nextFile);
+                  setSoundLabel(nextFile ? nextFile.name.replace(/\.[^/.]+$/, '') : '');
+                  if (nextFile) {
+                    const preview = URL.createObjectURL(nextFile);
+                    setSoundPreviewUrl(preview);
+                  } else {
+                    setSoundPreviewUrl('');
+                  }
+                }}
+                className="text-sm text-slate-300"
+              />
+            </label>
+            {soundPreviewUrl ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-xs font-bold uppercase tracking-[.18em] text-[var(--dv-accent)]">Sound preview</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSoundFile(null);
+                      setSoundPreviewUrl('');
+                      setSoundLabel('');
+                    }}
+                    className="text-xs font-bold text-slate-300"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="mb-2 text-sm text-white">{soundLabel || 'Selected sound'}</p>
+                <audio controls src={soundPreviewUrl} className="w-full" />
+              </div>
+            ) : null}
             <p className="text-xs leading-5 text-slate-500">
               MP4, WebM, or MOV; maximum 50 MB on the current storage plan. Upload only content you own or can legally share.
               Every Reel is reviewed before publishing.

@@ -42,8 +42,22 @@ export default function Header() {
 
   function handleBack() {
     if (location.pathname === "/dashboard") return
-    if (window.history.length > 1) navigate(-1)
-    else navigate("/dashboard")
+
+    const current = `${location.pathname}${location.search}${location.hash}`
+    const raw = window.sessionStorage.getItem("dv-nav-history")
+    const stack = raw ? JSON.parse(raw) as string[] : []
+    const compact = [...new Set([...(stack || []), current])].filter(Boolean)
+    const limited = compact.slice(-4)
+    const previous = limited.length > 1 ? limited[limited.length - 2] : null
+
+    window.sessionStorage.setItem("dv-nav-history", JSON.stringify(limited))
+
+    if (previous && previous !== current) {
+      navigate(previous, { replace: true })
+      return
+    }
+
+    navigate("/dashboard", { replace: true })
   }
 
   return (
