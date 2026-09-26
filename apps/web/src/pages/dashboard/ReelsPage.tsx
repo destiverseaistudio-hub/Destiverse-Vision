@@ -535,7 +535,7 @@ export default function ReelsPage() {
     window.setTimeout(() => window.location.reload(), 250);
   };
   return (
-    <main className="relative mx-auto h-full min-h-[calc(100dvh-8rem)] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:min-h-[calc(100dvh-9rem)] lg:min-h-0 sm:rounded-[2rem] sm:border sm:border-white/10">
+    <main className="relative mx-auto h-[100dvh] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.24em] text-[var(--dv-accent)]">
@@ -554,8 +554,8 @@ export default function ReelsPage() {
         className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
-        {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
+        {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-[100dvh] min-h-[100dvh] snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
+          <article key={reel.id} data-reel-id={reel.id} className="relative h-[100dvh] min-h-[100dvh] snap-start snap-always bg-zinc-950 touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
@@ -623,7 +623,7 @@ export default function ReelsPage() {
                 {(reelPlayback[reel.id] ?? true) ? <Pause className="size-4" /> : <Play className="size-4 fill-current" />}
               </button>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-3 p-4 pb-3 sm:gap-4 sm:p-5 sm:pb-4">
+            <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-2.5 px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 sm:gap-4 sm:px-5 sm:pb-4">
               <div className="min-w-0 flex-1">
                 {reel.creator_id ? (
                   <Link
@@ -651,17 +651,17 @@ export default function ReelsPage() {
                 </span>
                 <h2 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-white sm:text-xl">{reel.title}</h2>
                 <p className="mt-1 max-w-sm line-clamp-2 text-xs leading-5 text-white/80 sm:text-sm sm:leading-6">{reel.caption}</p>
-                <div className="mt-2 flex max-w-full items-center gap-2">
-                  <Link to={soundPagePath(reel)} className="inline-flex min-w-0 max-w-[9rem] items-center gap-1.5 overflow-hidden text-[11px] text-white/75 hover:text-white sm:max-w-none sm:text-xs">
+                <div className="mt-2 flex max-w-full items-center gap-1.5 overflow-hidden">
+                  <Link to={soundPagePath(reel)} className="inline-flex min-w-0 max-w-[12rem] items-center gap-1.5 overflow-hidden rounded-full bg-black/20 px-1.5 py-1 text-[10px] text-white/75 hover:text-white sm:max-w-none sm:text-xs">
                     <Music2 className="size-3.5 shrink-0 sm:size-4" />
-                    <span>{reel.audio_label || 'Original sound · DestiVerse'}</span>
+                    <span className="truncate">{reel.audio_label || 'Original sound · DestiVerse'}</span>
                   </Link>
                   <button type="button" onClick={() => triggerSoundSearch(reel)} className="shrink-0 rounded-full border border-white/15 bg-black/35 px-2 py-1 text-[9px] font-bold text-white/85 hover:text-white sm:px-2.5 sm:text-[10px]">
                     Use sound
                   </button>
                 </div>
               </div>
-              <div className="relative z-20 mb-12 flex flex-col items-center gap-1.5 pr-0.5 sm:mb-4 sm:gap-2">
+              <div className="relative z-20 mb-[calc(0.15rem+env(safe-area-inset-bottom))] flex flex-col items-center gap-1.5 pr-0.5 sm:mb-2 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => void toggleLove(reel, 'button')}
