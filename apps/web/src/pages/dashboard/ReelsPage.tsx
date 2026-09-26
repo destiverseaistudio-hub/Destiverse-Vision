@@ -573,11 +573,11 @@ export default function ReelsPage() {
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onLoadedMetadata={(event) => {
-                  const video = event.currentTarget as HTMLVideoElement | null;
-                  if (!video || !Number.isFinite(video.videoWidth) || !Number.isFinite(video.videoHeight)) return;
+                  const { videoHeight, videoWidth } = event.currentTarget;
+                  if (!Number.isFinite(videoWidth) || !Number.isFinite(videoHeight)) return;
                   setMediaFitByReel((current) => ({
                     ...current,
-                    [reel.id]: video.videoWidth > video.videoHeight ? 'contain' : 'cover',
+                    [reel.id]: videoWidth > videoHeight ? 'contain' : 'cover',
                   }));
                 }}
                 onError={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}

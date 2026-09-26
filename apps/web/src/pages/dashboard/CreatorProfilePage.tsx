@@ -89,11 +89,21 @@ export default function CreatorProfilePage() {
       setFollowers(followerCount ?? 0);
       setFollowing(followingCount ?? 0);
       if (reelData?.length) {
-        const { data: engagement } = await supabase.rpc('get_public_reel_engagement', { reel_ids: reelData.map((reel) => reel.id) });
-        const nextEngagement = ((engagement ?? []) as Engagement[]).reduce<Record<string, { likes: number; views: number }>>((counts, row) => {
+        const reelIds = reelData.map((reel) => reel.id);
+        const { data: engagement, error: engagementError } = await supabase.rpc('get_public_reel_engagement', { reel_ids: reelIds });
+        const { data: reactions } = engagementError
+          ? await supabase.from('reel_reactions').select('reel_id').in('reel_id', reelIds).eq('reaction', 'love')
+          : { data: [] };
+        const nextEngagement = engagementError
+          ? (reactions ?? []).reduce<Record<string, { likes: number; views: number }>>((counts, row) => {
+            const current = counts[row.reel_id] ?? { likes: 0, views: 0 };
+            counts[row.reel_id] = { ...current, likes: current.likes + 1 };
+            return counts;
+          }, {})
+          : ((engagement ?? []) as Engagement[]).reduce<Record<string, { likes: number; views: number }>>((counts, row) => {
           counts[row.reel_id] = { likes: Number(row.likes), views: Number(row.views) };
           return counts;
-        }, {});
+          }, {});
         if (active) {
           setEngagementByReel(nextEngagement);
           setLikes(Object.values(nextEngagement).reduce((total, item) => total + item.likes, 0));
