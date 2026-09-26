@@ -536,7 +536,7 @@ export default function ReelsPage() {
     window.setTimeout(() => window.location.reload(), 250);
   };
   return (
-    <main className="relative mx-auto h-full min-h-0 max-w-[520px] overflow-hidden bg-black shadow-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
+    <main className="relative mx-auto h-full min-h-[calc(100dvh-8rem)] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:min-h-[calc(100dvh-9rem)] lg:min-h-0 sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.24em] text-[var(--dv-accent)]">
