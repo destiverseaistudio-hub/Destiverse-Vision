@@ -468,7 +468,8 @@ export default function ReelsPage() {
       if (!video) return;
       const isCurrent = reel.id === activeReelId;
       const shouldPlay = isCurrent && (reelPlayback[reel.id] ?? true);
-      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? false);
+      // Browsers permit swipe-driven autoplay only when the next video is muted.
+      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? true);
       video.muted = muted;
       if (shouldPlay) {
         void video.play().catch(() => undefined);
@@ -514,7 +515,7 @@ export default function ReelsPage() {
                 src={reel.video_url}
                 playsInline
                 loop
-                muted={videoMutedByReel[reel.id] ?? false}
+                muted={videoMutedByReel[reel.id] ?? true}
                 preload="metadata"
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
@@ -637,7 +638,7 @@ export default function ReelsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !(videoMutedByReel[reel.id] ?? false);
+                    const next = !(videoMutedByReel[reel.id] ?? true);
                     setVideoMutedByReel((current) => ({ ...current, [reel.id]: next }));
                     const video = videoRefs.current[reel.id];
                     if (video) {
@@ -646,12 +647,12 @@ export default function ReelsPage() {
                     }
                   }}
                   className="grid justify-items-center gap-1 text-white"
-                  aria-label={videoMutedByReel[reel.id] ?? false ? 'Unmute audio' : 'Mute audio'}
+                  aria-label={videoMutedByReel[reel.id] ?? true ? 'Unmute audio' : 'Mute audio'}
                 >
                   <span className="grid size-9 place-items-center rounded-full bg-black/45 backdrop-blur">
-                    {videoMutedByReel[reel.id] ?? false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                    {videoMutedByReel[reel.id] ?? true ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
                   </span>
-                  <span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? false ? 'Sound' : 'Mute'}</span>
+                  <span className="text-[10px] font-bold">{videoMutedByReel[reel.id] ?? true ? 'Sound' : 'Mute'}</span>
                 </button>
                 <div className="relative">
                   <button
