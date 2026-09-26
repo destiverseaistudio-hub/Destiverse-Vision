@@ -219,10 +219,7 @@ export default function ReelsPage() {
       .then(({ data }) => setLiked((data ?? []).map((row) => row.reel_id)));
   }, [session]);
   useEffect(() => {
-    if (!session) {
-      setSavedReels([]);
-      return;
-    }
+    if (!session) return;
     void supabase
       .from('reel_saves')
       .select('reel_id')

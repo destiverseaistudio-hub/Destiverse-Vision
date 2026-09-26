@@ -142,6 +142,7 @@ export default function App() {
   const [coinProducts, setCoinProducts] = useState<CoinProduct[]>([])
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([])
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
+  const [pushSubscriptionCount, setPushSubscriptionCount] = useState<number | null>(null)
   const [adDraft, setAdDraft] = useState({ name: "", format: "banner" as AdCampaign["format"], placement: "home" as AdCampaign["placement"], headline: "", body: "", media_url: "", video_url: "", cta_label: "Learn more", cta_url: "", skip_after_seconds: "5", midroll_at_seconds: "30", reel_interval: "10", frequency_cap_per_day: "3", priority: "0", active: false, premium_visible: false, starts_at: "", ends_at: "" })
   const [editingAdId, setEditingAdId] = useState<string | null>(null)
   const [planDraft, setPlanDraft] = useState({ name: "", price_cents: "", currency: "NGN", features: "", coins_included: "0", active: true })
@@ -181,6 +182,12 @@ export default function App() {
   const [heroFile, setHeroFile] = useState<File | null>(null)
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [users, setUsers] = useState<UserRecord[]>([])
+  useEffect(() => {
+    if (!isAdmin) return
+    void supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("active", true).then(({ count, error }) => {
+      if (!error) setPushSubscriptionCount(count ?? 0)
+    })
+  }, [isAdmin])
   const [watchlistRecords, setWatchlistRecords] = useState<WatchlistRecord[]>([])
   const [watchProgressRecords, setWatchProgressRecords] = useState<WatchProgressRecord[]>([])
   const [aiBusy, setAiBusy] = useState(false)
@@ -1052,9 +1059,10 @@ export default function App() {
           <label htmlFor="settings-hero-title">Home hero title<input id="settings-hero-title" name="hero_title" value={settingsDraft.hero_title} onChange={(event) => setSettingsDraft((current) => ({ ...current, hero_title: event.target.value }))} /></label>
           <label htmlFor="settings-hero-description">Home hero description<textarea id="settings-hero-description" name="hero_description" rows={5} value={settingsDraft.hero_description} onChange={(event) => setSettingsDraft((current) => ({ ...current, hero_description: event.target.value }))} /></label>
           <label htmlFor="settings-announcement">Announcement banner<textarea id="settings-announcement" name="announcement" rows={3} value={settingsDraft.announcement} onChange={(event) => setSettingsDraft((current) => ({ ...current, announcement: event.target.value }))} placeholder="Optional message for users" /></label>
-          <div className="release-settings">
+            <div className="release-settings">
             <div className="section-heading"><div><p className="eyebrow">Release management</p><h2>App update ribbon</h2></div><button type="button" className="secondary" onClick={() => void assistWithRelease()} disabled={releaseAiBusy}><Bot size={16} /> {releaseAiBusy ? "Writing..." : "AI draft"}</button></div>
             <p className="muted">Publish a visible, versioned update notice throughout the main app. Use the link for an app store, download page, or release notes.</p>
+            <p className="muted">PWA update detection is deployment-driven. Active push subscribers: {pushSubscriptionCount === null ? "loading…" : pushSubscriptionCount}. Configure VAPID credentials and the protected deployment sender before sending web push.</p>
             <label className="toggle-setting" htmlFor="settings-update-enabled"><input id="settings-update-enabled" name="update_enabled" type="checkbox" checked={settingsDraft.update_enabled === "true"} onChange={(event) => setSettingsDraft((current) => ({ ...current, update_enabled: String(event.target.checked) }))} /> Show update ribbon in the main app</label>
             <div className="two-column"><label htmlFor="settings-app-version">Current app version<input id="settings-app-version" name="app_version" value={settingsDraft.app_version} onChange={(event) => setSettingsDraft((current) => ({ ...current, app_version: event.target.value, update_version: current.update_version || event.target.value }))} placeholder="e.g. 1.3.0" /></label><label htmlFor="settings-minimum-version">Minimum compatible version<input id="settings-minimum-version" name="minimum_required_version" value={settingsDraft.minimum_required_version} onChange={(event) => setSettingsDraft((current) => ({ ...current, minimum_required_version: event.target.value }))} placeholder="Leave blank if none" /></label></div>
             <div className="two-column"><label htmlFor="settings-update-version">Release version<input id="settings-update-version" name="update_version" value={settingsDraft.update_version} onChange={(event) => setSettingsDraft((current) => ({ ...current, update_version: event.target.value }))} placeholder="Example: v1.2.0" /></label><label htmlFor="settings-update-title">Update title<input id="settings-update-title" name="update_title" value={settingsDraft.update_title} onChange={(event) => setSettingsDraft((current) => ({ ...current, update_title: event.target.value }))} placeholder="What's new?" /></label></div>

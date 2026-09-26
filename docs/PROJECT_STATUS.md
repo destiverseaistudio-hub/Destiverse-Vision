@@ -827,3 +827,12 @@ The following were tested successfully:
 - Source integration checks passed.
 - Manual browser verification remains required before closure.
 
+# Production update and PWA foundation (2026-09-27)
+
+- The web app embeds a deployment build identifier and checks the no-store `/api/version` Vercel endpoint at launch, on foreground return, and every 30 minutes.
+- A non-blocking in-app banner offers **Update App** and preserves the current route through the existing refresh-path mechanism.
+- The PWA manifest and service worker are intentionally conservative: navigation is network-first, so Vercel's hashed JavaScript/CSS assets are not pinned indefinitely.
+- The header shows **Install** only when the browser exposes the native install prompt. Notification permission is requested only from the user-initiated Notifications-page action.
+- `push_subscriptions` is introduced through migration `20260926_004_push_subscriptions.sql`; it stores only a subscriber's endpoint/keys and device user agent with user-scoped RLS.
+- Required Vercel browser environment variable: `VITE_VAPID_PUBLIC_KEY`. A production sender still requires server-only `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, and a protected deployment webhook/CI trigger. Never place those values in browser variables.
+- For local update-banner testing only, set `VITE_ENABLE_UPDATE_TEST_MODE=true`. It is ignored in production builds.

@@ -8,6 +8,7 @@ import CreatorNoticeBanner from '@/components/layout/CreatorNoticeBanner';
 import MaintenanceGate from '@/components/layout/MaintenanceGate';
 import AppFooter from '@/components/layout/AppFooter';
 import ViewerAiAssistant from '@/components/layout/ViewerAiAssistant';
+import AppUpdateBanner from '@/components/layout/AppUpdateBanner';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,6 +30,7 @@ export default function DashboardLayout() {
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
             <Header />
+            <AppUpdateBanner />
             <NotificationBanner />
             <UpdateRibbon />
             <main

@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom"
 import "./index.css"
 
 import App from "./App"
+import { registerAppServiceWorker } from "@/lib/app-update"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { FeatureFlagProvider } from "@/contexts/FeatureFlagContext"
 
@@ -19,3 +20,5 @@ createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </StrictMode>,
 )
+
+registerAppServiceWorker()

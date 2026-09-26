@@ -2,12 +2,14 @@
 import {
   ArrowLeft,
   Bell,
+  Download,
   LogOut,
   RefreshCw,
   Search,
   UserCircle,
 } from "lucide-react"
 import { useLocation } from "react-router-dom"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
@@ -17,6 +19,22 @@ export default function Header() {
   const { session } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+
+  useEffect(() => {
+    const onPrompt = (event: Event) => { event.preventDefault(); setInstallPrompt(event as BeforeInstallPromptEvent) }
+    const onInstalled = () => setInstallPrompt(null)
+    window.addEventListener("beforeinstallprompt", onPrompt)
+    window.addEventListener("appinstalled", onInstalled)
+    return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled) }
+  }, [])
+
+  const installApp = async () => {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
 
   async function handleLogout() {
     await signOut()
@@ -76,6 +94,7 @@ export default function Header() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+        {installPrompt ? <Button type="button" variant="ghost" size="sm" onClick={() => void installApp()} className="text-[var(--dv-muted-foreground)] hover:bg-[var(--dv-surface-hover)] hover:text-[var(--dv-foreground)]" aria-label="Install DestiVerse Vision" title="Download App"><Download className="size-4" /><span className="ml-1 hidden text-xs sm:inline">Install</span></Button> : null}
         <Button type="button" variant="ghost" size="sm" onClick={handleNotifications} className="text-[var(--dv-muted-foreground)] hover:bg-[var(--dv-surface-hover)] hover:text-[var(--dv-foreground)]" aria-label="Open notifications" title="Notifications">
           <Bell className="size-5" />
         </Button>
