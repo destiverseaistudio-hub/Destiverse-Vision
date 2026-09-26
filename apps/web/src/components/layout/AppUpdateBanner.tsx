@@ -11,6 +11,7 @@ export default function AppUpdateBanner() {
   const [busy, setBusy] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [latestBuildId, setLatestBuildId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -18,7 +19,10 @@ export default function AppUpdateBanner() {
     const check = async () => {
       try {
         const latest = await fetchLatestVersion()
-        if (active && latest.buildId && latest.buildId !== runningBuildId) setAvailable(true)
+        if (!active || !latest.buildId) return
+        setLatestBuildId(latest.buildId)
+        const acknowledgedBuild = window.localStorage.getItem("dv-last-acknowledged-build")
+        setAvailable(latest.buildId !== runningBuildId && latest.buildId !== acknowledgedBuild)
       } catch (error) {
         // A version check must never block normal use when offline or an API route is unavailable.
         console.warn("DestiVerse version check skipped", error)
@@ -35,7 +39,7 @@ export default function AppUpdateBanner() {
   const update = async () => {
     setBusy(true)
     setFailed(false)
-    try { await activateLatestApp() } catch (error) { console.warn("DestiVerse update activation failed", error); setFailed(true); setBusy(false) }
+    try { await activateLatestApp(latestBuildId ?? undefined) } catch (error) { console.warn("DestiVerse update activation failed", error); setFailed(true); setBusy(false) }
   }
   return <aside className="border-b border-[var(--dv-accent)]/25 bg-[var(--dv-accent)]/[0.09] px-3 py-2.5 sm:px-6" aria-live="polite">
     <div className="mx-auto flex w-full max-w-[var(--dv-content-max-width)] items-center gap-3">

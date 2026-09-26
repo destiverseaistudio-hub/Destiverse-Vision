@@ -15,12 +15,13 @@ export async function fetchLatestVersion() {
   return response.json() as Promise<VersionManifest>
 }
 
-export async function activateLatestApp() {
+export async function activateLatestApp(buildId?: string) {
   const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined
   if (registration) {
     await registration.update()
     if (registration.waiting) registration.waiting.postMessage({ type: "SKIP_WAITING" })
   }
+  if (buildId) window.localStorage.setItem("dv-last-acknowledged-build", buildId)
   window.sessionStorage.setItem("dv-refresh-path", `${window.location.pathname}${window.location.search}${window.location.hash}`)
   window.location.reload()
 }
