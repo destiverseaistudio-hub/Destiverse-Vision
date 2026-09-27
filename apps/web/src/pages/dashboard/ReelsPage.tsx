@@ -3,6 +3,7 @@ import {
   ChevronUp,
   Bookmark,
   Heart,
+  Keyboard,
   EyeOff,
   Flag,
   MessageCircle,
@@ -12,6 +13,7 @@ import {
   Play,
   Search,
   Share2,
+  Smile,
   Sparkles,
   Upload,
   Volume2,
@@ -38,6 +40,7 @@ type Reel = {
 type Comment = { id: string; body: string; created_at: string; user_id: string; author_name?: string | null; sticker?: string | null; parent_comment_id?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
+const commentEmojiPack = ['😡', '👍', '😎', '😒', '🚀', '🤗', '😍', '❤️', '🤣', '😂', '😊', '😉', '👌', '😘', '😁', '🙌', '🤦‍♀️', '🎶', '🤞', '✌️', '🤷‍♂️', '🤷‍♀️', '🤦‍♂️'];
 const demos: Reel[] = [
   [
     'welcome',
@@ -119,6 +122,8 @@ export default function ReelsPage() {
   const [likedCommentIds, setLikedCommentIds] = useState<string[]>([]);
   const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
   const [commentSticker, setCommentSticker] = useState<string | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [expandedReplyThreads, setExpandedReplyThreads] = useState<string[]>([]);
   const [commentRefreshVersion, setCommentRefreshVersion] = useState(0);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
@@ -148,6 +153,8 @@ export default function ReelsPage() {
   const refreshTouchStart = useRef<number | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const lastCenterTapRef = useRef<Record<string, number>>({});
+  const centerTapTimeoutRef = useRef<Record<string, number | null>>({});
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   const [prevSearch, setPrevSearch] = useState(normalizedSearch);
   if (normalizedSearch !== prevSearch) {
@@ -389,6 +396,11 @@ export default function ReelsPage() {
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [commentReel?.id]);
+  useEffect(() => {
+    if (!replyTarget) return;
+    const focus = window.setTimeout(() => commentInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(focus);
+  }, [replyTarget]);
   const addComment = async () => {
     if (!commentReel || (!commentBody.trim() && !commentSticker)) return;
     if (!session) {
@@ -398,7 +410,7 @@ export default function ReelsPage() {
     setCommentError('');
     const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
     const authorLabel = profile?.display_name?.trim() || session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
-    const submittedBody = commentBody.trim() || commentSticker;
+    const submittedBody = commentBody.trim() || (commentSticker ? 'Sticker' : '');
     if (!submittedBody) return;
     const { data, error } = await supabase
       .from('reel_comments')
@@ -474,6 +486,8 @@ export default function ReelsPage() {
     const userLabel = session?.user.user_metadata?.display_name || session?.user.user_metadata?.full_name || session?.user.email?.split('@')[0];
     return userLabel || 'User';
   };
+  const rootComments = comments.filter((comment) => !comment.parent_comment_id);
+  const repliesFor = (commentId: string) => comments.filter((comment) => comment.parent_comment_id === commentId);
   const normalizeSoundValue = (value?: string | null) => (value ?? 'Original sound · DestiVerse').trim().replace(/\s+/g, ' ');
   const soundPagePath = (reel: Reel) => `/dashboard/sounds/${encodeURIComponent(normalizeSoundValue(reel.audio_label))}`;
   const triggerSoundSearch = (reel: Reel) => {
@@ -487,18 +501,31 @@ export default function ReelsPage() {
     const lastTap = lastCenterTapRef.current[reel.id] ?? 0;
 
     if (now - lastTap < 260) {
-      lastCenterTapRef.current[reel.id] = 0;
+      const pendingTap = centerTapTimeoutRef.current[reel.id];
+      if (pendingTap !== null && pendingTap !== undefined) window.clearTimeout(pendingTap);
+      centerTapTimeoutRef.current[reel.id] = null;
+      // Keep the gesture active so a rapid triple-tap (or longer burst) is
+      // entirely a like animation and never falls through to playback.
+      lastCenterTapRef.current[reel.id] = now;
       void toggleLove(reel, 'double-tap');
       return;
     }
 
     lastCenterTapRef.current[reel.id] = now;
-    const video = videoRefs.current[reel.id];
-    if (!video) return;
-    const shouldPlay = video.paused;
-    setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
-    if (shouldPlay) void video.play().catch(() => undefined);
-    else video.pause();
+    centerTapTimeoutRef.current[reel.id] = window.setTimeout(() => {
+      const video = videoRefs.current[reel.id];
+      if (!video) return;
+      const shouldPlay = video.paused;
+      setReelPlayback((current) => ({ ...current, [reel.id]: shouldPlay }));
+      if (shouldPlay) void video.play().catch(() => undefined);
+      else video.pause();
+      centerTapTimeoutRef.current[reel.id] = null;
+    }, 230);
+  };
+  const handleReelSurfaceTap = (event: React.MouseEvent<HTMLElement>, reel: Reel) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, textarea, select, [role="dialog"]')) return;
+    handleCenterTap(reel);
   };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
@@ -598,7 +625,7 @@ export default function ReelsPage() {
       >
         {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
+          <article key={reel.id} data-reel-id={reel.id} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
@@ -627,14 +654,6 @@ export default function ReelsPage() {
                 onPlay={() => void trackView(reel)}
               />
             )}
-            {!reel.demo ? (
-              <button
-                type="button"
-                className="absolute inset-0 z-10 cursor-pointer bg-transparent"
-                onClick={() => handleCenterTap(reel)}
-                aria-label="Play or pause reel"
-              />
-            ) : null}
             {reelLoading[reel.id] ? (
               <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
                 <div className="grid size-12 place-items-center rounded-full border border-white/25 bg-black/45 backdrop-blur-md">
@@ -857,11 +876,14 @@ export default function ReelsPage() {
               </button>
             </div>
             <div className="mt-4 max-h-72 space-y-3 overflow-y-auto">
-              {comments.length ? (
-                comments.map((comment) => (
+              {rootComments.length ? (
+                rootComments.map((comment) => {
+                  const replies = repliesFor(comment.id);
+                  const repliesExpanded = expandedReplyThreads.includes(comment.id);
+                  return (
                   <article
                     key={comment.id}
-                    className={`rounded-xl bg-black/20 p-3 text-sm text-slate-200 ${comment.parent_comment_id ? 'ml-5 border-l-2 border-[var(--dv-accent)]/40' : ''}`}
+                    className="rounded-xl bg-black/20 p-3 text-sm text-slate-200"
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <strong className="text-sm font-bold text-white">{getCommentAuthorName(comment)}</strong>
@@ -877,7 +899,7 @@ export default function ReelsPage() {
                       ) : null}
                     </div>
                     {comment.sticker ? <span className="mr-1 inline-block rounded-lg bg-white/10 px-2 py-1 text-lg" aria-label="Comment sticker">{comment.sticker}</span> : null}
-                    <p className="inline">{comment.body}</p>
+                    {comment.body !== 'Sticker' ? <p className="inline">{comment.body}</p> : null}
                     <time className="mt-2 block text-xs text-slate-500">
                       {new Date(comment.created_at).toLocaleString()}
                     </time>
@@ -885,20 +907,31 @@ export default function ReelsPage() {
                       <button type="button" onClick={() => void toggleCommentLove(comment)} className={likedCommentIds.includes(comment.id) ? 'text-red-400' : 'hover:text-white'}>
                         <Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(comment.id) ? 'fill-current' : ''}`} />{commentLikeCounts[comment.id] ?? 0}
                       </button>
-                      <button type="button" onClick={() => { setReplyTarget(comment); setCommentSticker(null); }} className="hover:text-white">Reply</button>
+                      <button type="button" onClick={() => { setReplyTarget(comment); setCommentSticker(null); setEmojiPickerOpen(false); window.requestAnimationFrame(() => commentInputRef.current?.focus()); }} className="hover:text-white">Reply</button>
                     </div>
+                    {replies.length ? <button type="button" onClick={() => setExpandedReplyThreads((current) => repliesExpanded ? current.filter((id) => id !== comment.id) : [...current, comment.id])} className="mt-3 text-xs font-bold text-[var(--dv-accent)]">{repliesExpanded ? 'Hide' : 'View'} {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</button> : null}
+                    {repliesExpanded ? <div className="mt-3 space-y-2 border-l-2 border-[var(--dv-accent)]/35 pl-3">{replies.map((reply) => (
+                      <article key={reply.id} className="rounded-lg bg-white/[.04] p-2.5 text-sm">
+                        <strong className="text-xs font-bold text-white">{getCommentAuthorName(reply)}</strong>
+                        <div className="mt-1">{reply.sticker ? <span className="mr-1 inline-block rounded bg-white/10 px-1.5 text-base">{reply.sticker}</span> : null}{reply.body !== 'Sticker' ? <span>{reply.body}</span> : null}</div>
+                        <div className="mt-2 flex items-center gap-3 text-[11px] font-bold text-slate-400"><button type="button" onClick={() => void toggleCommentLove(reply)} className={likedCommentIds.includes(reply.id) ? 'text-red-400' : 'hover:text-white'}><Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(reply.id) ? 'fill-current' : ''}`} />{commentLikeCounts[reply.id] ?? 0}</button><button type="button" onClick={() => { setReplyTarget(comment); setEmojiPickerOpen(false); window.requestAnimationFrame(() => commentInputRef.current?.focus()); }} className="hover:text-white">Reply</button></div>
+                      </article>
+                    ))}</div> : null}
                   </article>
-                ))
+                  );
+                })
               ) : (
                 <p className="py-6 text-center text-sm text-slate-400">Be the first to reply.</p>
               )}
             </div>
             {replyTarget ? <div className="mt-4 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs text-slate-300"><span>Replying to <strong>{getCommentAuthorName(replyTarget)}</strong></span><button type="button" onClick={() => setReplyTarget(null)} className="text-white">Cancel</button></div> : null}
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="hidden" aria-hidden="true">
               {['✨', '🔥', '👏', '🎬', '❤️'].map((sticker) => <button key={sticker} type="button" onClick={() => setCommentSticker((current) => current === sticker ? null : sticker)} className={`grid size-8 place-items-center rounded-lg text-base ${commentSticker === sticker ? 'bg-[var(--dv-accent)]/30 ring-1 ring-[var(--dv-accent)]' : 'bg-white/5 hover:bg-white/10'}`} aria-label={`Add ${sticker} sticker`}>{sticker}</button>)}
             </div>
+            {emojiPickerOpen ? <div className="mt-3 grid max-h-36 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-white/10 bg-black/35 p-2">{commentEmojiPack.map((emoji) => <button key={emoji} type="button" onClick={() => { setCommentSticker(emoji); setEmojiPickerOpen(false); commentInputRef.current?.focus(); }} className="grid size-8 place-items-center rounded-lg text-lg hover:bg-white/10" aria-label={`Add ${emoji} to comment`}>{emoji}</button>)}</div> : null}
             <div className="mt-2 flex gap-2">
               <input
+                ref={commentInputRef}
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
                 maxLength={500}
@@ -906,6 +939,7 @@ export default function ReelsPage() {
                 disabled={!session}
                 className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-3 text-sm text-white"
               />
+              <button type="button" onClick={() => setEmojiPickerOpen((current) => !current)} disabled={!session} className="grid size-11 shrink-0 place-items-center rounded-xl border border-white/15 bg-black/20 text-white disabled:opacity-50" aria-label={emojiPickerOpen ? 'Return to typing' : 'Open emoji picker'}>{emojiPickerOpen ? <Keyboard className="size-4" /> : <Smile className="size-5" />}</button>
               <button
                 type="button"
                 onClick={() => void addComment()}
