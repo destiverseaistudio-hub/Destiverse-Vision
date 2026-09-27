@@ -11,6 +11,7 @@ import {
   Music2,
   Pause,
   Play,
+  RotateCcw,
   Search,
   Share2,
   Smile,
@@ -39,6 +40,7 @@ type Reel = {
 };
 type Comment = { id: string; body: string; created_at: string; user_id: string; author_name?: string | null; sticker?: string | null; parent_comment_id?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
+type ReportTarget = { kind: 'reel'; reel: Reel } | { kind: 'comment'; comment: Comment };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
 const commentEmojiPack = ['😡', '👍', '😎', '😒', '🚀', '🤗', '😍', '❤️', '🤣', '😂', '😊', '😉', '👌', '😘', '😁', '🙌', '🤦‍♀️', '🎶', '🤞', '✌️', '🤷‍♂️', '🤷‍♀️', '🤦‍♂️'];
 const demos: Reel[] = [
@@ -116,6 +118,8 @@ export default function ReelsPage() {
   const [feedMode, setFeedMode] = useState<'for-you' | 'following'>('for-you');
   const [commentReel, setCommentReel] = useState<Reel | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [commentLimit, setCommentLimit] = useState(30);
+  const [hasMoreComments, setHasMoreComments] = useState(false);
   const [commentBody, setCommentBody] = useState('');
   const [commentError, setCommentError] = useState('');
   const [commentLikeCounts, setCommentLikeCounts] = useState<Record<string, number>>({});
@@ -125,11 +129,15 @@ export default function ReelsPage() {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [expandedReplyThreads, setExpandedReplyThreads] = useState<string[]>([]);
   const [commentRefreshVersion, setCommentRefreshVersion] = useState(0);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportStatus, setReportStatus] = useState('');
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [videoMutedByReel, setVideoMutedByReel] = useState<Record<string, boolean>>({});
   const [reelPlayback, setReelPlayback] = useState<Record<string, boolean>>({});
   const [reelLoading, setReelLoading] = useState<Record<string, boolean>>({});
+  const [reelErrors, setReelErrors] = useState<Record<string, boolean>>({});
   const [likedBurstId, setLikedBurstId] = useState<string | null>(null);
   const [shareReelTarget, setShareReelTarget] = useState<Reel | null>(null);
   const [moreActionsReelId, setMoreActionsReelId] = useState<string | null>(null);
@@ -195,18 +203,23 @@ export default function ReelsPage() {
         }),
       );
       const ids = (data ?? []).map((reel) => reel.id);
-      const { data: reactions } = ids.length
-        ? await supabase.from('reel_reactions').select('reel_id').eq('reaction', 'love').in('reel_id', ids)
-        : { data: [] };
-      const counts = ((reactions ?? []) as Array<{ reel_id: string }>).reduce<Record<string, number>>((accumulator, row) => {
-        accumulator[row.reel_id] = (accumulator[row.reel_id] ?? 0) + 1;
+      const { data: engagement, error: engagementError } = ids.length
+        ? await supabase.rpc('get_public_reel_feed_engagement', { reel_ids: ids })
+        : { data: [], error: null };
+      const fallbackRows = engagementError && ids.length
+        ? await Promise.all([
+            supabase.from('reel_reactions').select('reel_id').eq('reaction', 'love').in('reel_id', ids),
+            supabase.from('reel_comments').select('reel_id').eq('hidden', false).in('reel_id', ids),
+          ])
+        : null;
+      const fallbackLikes = fallbackRows?.[0].data ?? [];
+      const fallbackComments = fallbackRows?.[1].data ?? [];
+      const counts = ((engagementError ? fallbackLikes : engagement ?? []) as Array<{ reel_id: string; likes?: number }>).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = row.likes === undefined ? (accumulator[row.reel_id] ?? 0) + 1 : Number(row.likes) || 0;
         return accumulator;
       }, {});
-      const { data: commentRows } = ids.length
-        ? await supabase.from('reel_comments').select('reel_id').eq('hidden', false).in('reel_id', ids)
-        : { data: [] };
-      const commentCounts = ((commentRows ?? []) as Array<{ reel_id: string }>).reduce<Record<string, number>>((accumulator, row) => {
-        accumulator[row.reel_id] = (accumulator[row.reel_id] ?? 0) + 1;
+      const commentCounts = ((engagementError ? fallbackComments : engagement ?? []) as Array<{ reel_id: string; comments?: number }>).reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.reel_id] = row.comments === undefined ? (accumulator[row.reel_id] ?? 0) + 1 : Number(row.comments) || 0;
         return accumulator;
       }, {});
       setReelLikeCounts(counts);
@@ -331,12 +344,9 @@ export default function ReelsPage() {
     const { error } = await supabase.from('reel_not_interested').insert({ user_id: session.user.id, reel_id: reel.id });
     if (!error || error.code === '23505') setNotInterested(current => [...new Set([...current, reel.id])]);
   };
-  const reportReel = async (reel: Reel) => {
-    if (!session || reel.demo) return;
-    const reason = window.prompt('Why should this Reel be reviewed?');
-    if (!reason?.trim()) return;
-    const { error } = await supabase.from('reel_reports').insert({ reel_id: reel.id, reporter_id: session.user.id, reason: reason.trim() });
-    window.alert(error ? (error.code === '23505' ? 'You have already reported this Reel.' : `Report could not be sent: ${error.message}`) : 'Report sent to moderation.');
+  const reportReel = (reel: Reel) => {
+    if (!session || reel.demo) { navigate('/'); return; }
+    setReportReason(''); setReportStatus(''); setReportTarget({ kind: 'reel', reel });
   };
   const weeklyDemo = new Date().getDay() === 1 ? demos[new Date().getDate() % demos.length] : null;
   const eligibleReels = reels.filter(reel => !notInterested.includes(reel.id) && !blockedCreators.includes(reel.creator_id ?? '') && (feedMode === 'for-you' || following.includes(reel.creator_id ?? '')));
@@ -364,38 +374,46 @@ export default function ReelsPage() {
   });
   const feed = normalizedSearch ? matchedReels : focusedFeed;
   const feedWithAds: Array<Reel | { ad: AdCampaign; id: string }> = reelAd && !normalizedSearch ? feed.flatMap((reel, index) => (index > 0 && index % reelAd.reel_interval === 0 ? [reel, { id: `ad-${reelAd.id}-${index}`, ad: reelAd }] : [reel])) : feed;
+  const commentReelId = commentReel?.id;
   useEffect(() => {
-    if (!commentReel) return;
+    if (!commentReelId) return;
     void supabase
       .from('reel_comments')
       .select('id,body,created_at,user_id,author_name,sticker,parent_comment_id')
-      .eq('reel_id', commentReel.id)
+      .eq('reel_id', commentReelId)
       .eq('hidden', false)
       .order('created_at', { ascending: false })
+      .limit(commentLimit + 1)
       .then(async ({ data }) => {
-        const nextComments = (data ?? []) as Comment[];
+        const rows = (data ?? []) as Comment[];
+        setHasMoreComments(rows.length > commentLimit);
+        const nextComments = rows.slice(0, commentLimit);
         setComments(nextComments);
         const commentIds = nextComments.map((comment) => comment.id);
-        const { data: reactions } = commentIds.length
-          ? await supabase.from('reel_comment_reactions').select('comment_id,user_id').in('comment_id', commentIds)
+        const [{ data: engagement, error: engagementError }, { data: ownReactions }] = await Promise.all([
+          commentIds.length ? supabase.rpc('get_public_reel_comment_engagement', { comment_ids: commentIds }) : Promise.resolve({ data: [], error: null }),
+          session?.user.id && commentIds.length ? supabase.from('reel_comment_reactions').select('comment_id').eq('user_id', session.user.id).in('comment_id', commentIds) : Promise.resolve({ data: [] }),
+        ]);
+        const { data: fallbackReactions } = engagementError && commentIds.length
+          ? await supabase.from('reel_comment_reactions').select('comment_id').in('comment_id', commentIds)
           : { data: [] };
-        const counts = ((reactions ?? []) as Array<{ comment_id: string }>).reduce<Record<string, number>>((current, row) => {
-          current[row.comment_id] = (current[row.comment_id] ?? 0) + 1;
+        const counts = ((engagementError ? fallbackReactions : engagement ?? []) as Array<{ comment_id: string; likes?: number }>).reduce<Record<string, number>>((current, row) => {
+          current[row.comment_id] = row.likes === undefined ? (current[row.comment_id] ?? 0) + 1 : Number(row.likes) || 0;
           return current;
         }, {});
         setCommentLikeCounts(counts);
-        setLikedCommentIds(((reactions ?? []) as Array<{ comment_id: string; user_id: string }>).filter((row) => row.user_id === session?.user.id).map((row) => row.comment_id));
+        setLikedCommentIds(((ownReactions ?? []) as Array<{ comment_id: string }>).map((row) => row.comment_id));
       });
-  }, [commentReel, session?.user.id, commentRefreshVersion]);
+  }, [commentReelId, commentLimit, session?.user.id, commentRefreshVersion]);
   useEffect(() => {
-    if (!commentReel) return;
+    if (!commentReelId) return;
     const channel = supabase
-      .channel(`reel-comments-${commentReel.id}-${crypto.randomUUID()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comments', filter: `reel_id=eq.${commentReel.id}` }, () => setCommentRefreshVersion((current) => current + 1))
+      .channel(`reel-comments-${commentReelId}-${crypto.randomUUID()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comments', filter: `reel_id=eq.${commentReelId}` }, () => setCommentRefreshVersion((current) => current + 1))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comment_reactions' }, () => setCommentRefreshVersion((current) => current + 1))
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [commentReel?.id]);
+  }, [commentReelId]);
   useEffect(() => {
     if (!replyTarget) return;
     const focus = window.setTimeout(() => commentInputRef.current?.focus(), 0);
@@ -408,18 +426,16 @@ export default function ReelsPage() {
       return;
     }
     setCommentError('');
-    const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
-    const authorLabel = profile?.display_name?.trim() || session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
     const submittedBody = commentBody.trim() || (commentSticker ? 'Sticker' : '');
     if (!submittedBody) return;
     const { data, error } = await supabase
       .from('reel_comments')
-      .insert({ reel_id: commentReel.id, user_id: session.user.id, body: submittedBody, author_name: authorLabel, sticker: commentSticker, parent_comment_id: replyTarget?.id ?? null })
+      .insert({ reel_id: commentReel.id, user_id: session.user.id, body: submittedBody, sticker: commentSticker, parent_comment_id: replyTarget?.id ?? null })
       .select('id,body,created_at,user_id,author_name,sticker,parent_comment_id')
       .single();
     if (!error && data) {
-      setCommentDisplayNames((current) => ({ ...current, [session.user.id]: authorLabel }));
-      setComments((current) => [{ ...(data as Comment), author_name: authorLabel }, ...current]);
+      setCommentDisplayNames((current) => ({ ...current, [session.user.id]: data.author_name || 'User' }));
+      setComments((current) => [{ ...(data as Comment) }, ...current]);
       setReelCommentCounts((current) => ({ ...current, [commentReel.id]: (current[commentReel.id] ?? 0) + 1 }));
       setCommentBody('');
       setCommentSticker(null);
@@ -428,18 +444,21 @@ export default function ReelsPage() {
   };
   const reportComment = async (comment: Comment) => {
     if (!session || comment.user_id === session.user.id || reportedCommentIds.includes(comment.id)) return;
-    const reason = window.prompt('Why should this comment be reviewed?');
-    if (!reason?.trim()) return;
-    const { error } = await supabase
-      .from('reel_comment_reports')
-      .insert({ comment_id: comment.id, reporter_id: session.user.id, reason: reason.trim() });
-    if (!error) {
-      setReportedCommentIds((current) => [...current, comment.id]);
-      window.alert('Report sent to DestiVerse moderation. Thank you.');
-    } else if (error.code === '23505') {
-      setReportedCommentIds((current) => [...current, comment.id]);
-      window.alert('You have already reported this comment.');
-    } else window.alert('Your report could not be sent. Please try again.');
+    setReportReason(''); setReportStatus(''); setReportTarget({ kind: 'comment', comment });
+  };
+  const submitReport = async () => {
+    if (!session || !reportTarget || reportReason.trim().length < 5) return;
+    setReportStatus('Sending…');
+    const { error } = reportTarget.kind === 'reel'
+      ? await supabase.from('reel_reports').insert({ reel_id: reportTarget.reel.id, reporter_id: session.user.id, reason: reportReason.trim() })
+      : await supabase.from('reel_comment_reports').insert({ comment_id: reportTarget.comment.id, reporter_id: session.user.id, reason: reportReason.trim() });
+    if (error) {
+      setReportStatus(error.code === '23505' ? 'You have already sent a report for this item.' : 'Your report could not be sent. Please try again.');
+      return;
+    }
+    if (reportTarget.kind === 'comment') setReportedCommentIds((current) => [...new Set([...current, reportTarget.comment.id])]);
+    setReportStatus('Report sent to DestiVerse moderation. Thank you.');
+    window.setTimeout(() => setReportTarget(null), 900);
   };
   const toggleCommentLove = async (comment: Comment) => {
     if (!session) {
@@ -453,6 +472,20 @@ export default function ReelsPage() {
     if (error && error.code !== '23505') return;
     setLikedCommentIds((current) => loved ? current.filter((id) => id !== comment.id) : [...new Set([...current, comment.id])]);
     if (error?.code !== '23505') setCommentLikeCounts((current) => ({ ...current, [comment.id]: Math.max(0, (current[comment.id] ?? 0) + (loved ? -1 : 1)) }));
+  };
+  const moderateComment = async (comment: Comment) => {
+    if (!session || !commentReel) return;
+    const isOwner = comment.user_id === session.user.id;
+    const isCreator = commentReel.creator_id === session.user.id;
+    if (!isOwner && !isCreator) return;
+    const { error } = isOwner
+      ? await supabase.from('reel_comments').delete().eq('id', comment.id)
+      : await supabase.from('reel_comments').update({ hidden: true }).eq('id', comment.id);
+    if (error) {
+      setCommentError(isOwner ? 'Your comment could not be deleted.' : 'This comment could not be hidden.');
+      return;
+    }
+    setCommentRefreshVersion((current) => current + 1);
   };
   const shareReel = async (reel: Reel, type: 'native' | 'copy' | 'whatsapp' | 'download' = 'native') => {
     const url = reel.demo ? `${window.location.origin}/dashboard/reels` : `${window.location.origin}/dashboard/reels/${reel.id}`;
@@ -513,6 +546,7 @@ export default function ReelsPage() {
         <div className="mt-3 flex items-center gap-4 text-[11px] font-bold text-slate-400">
           <button type="button" onClick={() => void toggleCommentLove(comment)} className={likedCommentIds.includes(comment.id) ? 'text-red-400' : 'hover:text-white'}><Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(comment.id) ? 'fill-current' : ''}`} />{commentLikeCounts[comment.id] ?? 0}</button>
           <button type="button" onClick={selectReply} className="hover:text-white">Reply</button>
+          {session && (session.user.id === comment.user_id || session.user.id === commentReel?.creator_id) ? <button type="button" onClick={() => void moderateComment(comment)} className="hover:text-white">{session.user.id === comment.user_id ? 'Delete' : 'Hide'}</button> : null}
         </div>
         {replies.length ? <button type="button" onClick={() => setExpandedReplyThreads((current) => repliesExpanded ? current.filter((id) => id !== comment.id) : [...current, comment.id])} aria-expanded={repliesExpanded} className="mt-3 rounded-full bg-[var(--dv-accent)]/10 px-2.5 py-1 text-[11px] font-bold text-[var(--dv-accent)] hover:bg-[var(--dv-accent)]/20">{repliesExpanded ? 'Hide' : 'View'} {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</button> : null}
         {repliesExpanded ? <div className="mt-3 space-y-2 border-l border-white/10 pl-2">{replies.map((reply) => <CommentThread key={reply.id} comment={reply} depth={depth + 1} />)}</div> : null}
@@ -566,6 +600,14 @@ export default function ReelsPage() {
       }
     });
     setActiveReelId((current) => current === reelId ? current : reelId);
+  };
+  const retryReel = (reelId: string) => {
+    const video = videoRefs.current[reelId];
+    if (!video) return;
+    setReelErrors((current) => ({ ...current, [reelId]: false }));
+    setReelLoading((current) => ({ ...current, [reelId]: true }));
+    video.load();
+    if (reelId === activeReelId) void video.play().catch(() => undefined);
   };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
@@ -665,7 +707,7 @@ export default function ReelsPage() {
       >
         {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
         {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
-          <article key={reel.id} data-reel-id={reel.id} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 touch-pan-y">
+          <article key={reel.id} data-reel-id={reel.id} tabIndex={0} onKeyDown={(event) => { if (!reel.demo && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCenterTap(reel); } }} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 outline-none focus-visible:ring-2 focus-visible:ring-[var(--dv-accent)] touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
             ) : (
@@ -680,7 +722,7 @@ export default function ReelsPage() {
                 loop
                 muted={videoMutedByReel[reel.id] ?? false}
                 preload={activeReelId === reel.id ? 'auto' : 'metadata'}
-                onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
+                onLoadStart={() => { setReelErrors((current) => ({ ...current, [reel.id]: false })); setReelLoading((current) => ({ ...current, [reel.id]: true })); }}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onWaiting={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onStalled={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
@@ -693,17 +735,18 @@ export default function ReelsPage() {
                     [reel.id]: video.videoWidth > video.videoHeight ? 'contain' : 'cover',
                   }));
                 }}
-                onError={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
+                onError={() => { setReelLoading((current) => ({ ...current, [reel.id]: false })); setReelErrors((current) => ({ ...current, [reel.id]: true })); }}
                 onPlay={() => void trackView(reel)}
               />
             )}
             {reelLoading[reel.id] && activeReelId === reel.id ? (
-              <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
+              <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/35">
                 <div className="grid size-12 place-items-center rounded-full border border-white/25 bg-black/45 backdrop-blur-md">
                   <div className="size-6 animate-spin rounded-full border-2 border-white/25 border-t-[var(--dv-accent)]" />
                 </div>
               </div>
             ) : null}
+            {reelErrors[reel.id] && activeReelId === reel.id ? <div className="absolute inset-0 z-30 grid place-items-center bg-black/65 p-6 text-center"><div><p className="text-sm font-bold text-white">Video could not load</p><p className="mt-1 text-xs text-white/65">Check your connection and try again.</p><button type="button" onClick={() => retryReel(reel.id)} className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-black"><RotateCcw className="size-3.5" /> Retry</button></div></div> : null}
             {likedBurstId === reel.id ? (
               <div className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
                 <div className="animate-[ping_0.7s_ease-out_forwards] text-6xl text-[var(--dv-accent)]">♥</div>
@@ -784,7 +827,7 @@ export default function ReelsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setCommentError(''); setCommentReel(reel); }}
+                  onClick={() => { setCommentError(''); setCommentLimit(30); setHasMoreComments(false); setReplyTarget(null); setCommentReel(reel); }}
                   className="grid justify-items-center gap-1 text-white"
                   aria-label={`Open comments (${totalCommentsFor(reel)})`}
                 >
@@ -885,6 +928,7 @@ export default function ReelsPage() {
         </button>
       </div>
       <Link to="/dashboard/create-reel" className="absolute right-4 top-20 z-[60] grid size-11 place-items-center rounded-full bg-[var(--dv-accent)] text-2xl font-black text-white shadow-lg shadow-[var(--dv-accent)]/30 md:hidden" aria-label="Create a Reel">+</Link>
+      {reportTarget ? <div className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-label="Report content"><section className="w-full max-w-sm rounded-3xl border border-white/10 bg-[var(--dv-surface)] p-5 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-lg font-black text-white">Report {reportTarget.kind}</h2><button type="button" onClick={() => setReportTarget(null)} className="rounded-full p-2 text-slate-300 hover:bg-white/10" aria-label="Close report form"><X className="size-4" /></button></div><p className="mt-2 text-sm text-slate-400">Tell moderation what needs review.</p><textarea autoFocus value={reportReason} onChange={(event) => setReportReason(event.target.value)} maxLength={400} rows={4} className="mt-4 w-full rounded-xl border border-white/15 bg-black/20 p-3 text-sm text-white outline-none focus:border-[var(--dv-accent)]" placeholder="Describe the issue (at least 5 characters)" /><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setReportTarget(null)} className="rounded-xl px-3 py-2 text-sm font-bold text-slate-300">Cancel</button><button type="button" onClick={() => void submitReport()} disabled={reportReason.trim().length < 5 || reportStatus === 'Sending…'} className="rounded-xl bg-[var(--dv-accent)] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Send report</button></div>{reportStatus ? <p className="mt-3 text-xs text-slate-300" role="status">{reportStatus}</p> : null}</section></div> : null}
       {shareReelTarget ? (
         <div className="fixed inset-0 z-[90] grid place-items-end bg-black/70 p-3 sm:place-items-center">
           <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-[var(--dv-surface)] p-3 shadow-2xl">
@@ -924,6 +968,7 @@ export default function ReelsPage() {
               ) : (
                 <p className="py-6 text-center text-sm text-slate-400">Be the first to reply.</p>
               )}
+              {hasMoreComments ? <button type="button" onClick={() => setCommentLimit((current) => current + 30)} className="mx-auto block rounded-full border border-white/15 px-3 py-1.5 text-xs font-bold text-white/80 hover:bg-white/10">Load more comments</button> : null}
             </div>
             {replyTarget ? <div className="mt-4 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs text-slate-300"><span>Replying to <strong>{getCommentAuthorName(replyTarget)}</strong></span><button type="button" onClick={() => setReplyTarget(null)} className="text-white">Cancel</button></div> : null}
             <div className="hidden" aria-hidden="true">
