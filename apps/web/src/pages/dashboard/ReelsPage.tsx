@@ -35,7 +35,7 @@ type Reel = {
   demo?: boolean;
   audio_label?: string | null;
 };
-type Comment = { id: string; body: string; created_at: string; user_id: string; profile_name?: string | null };
+type Comment = { id: string; body: string; created_at: string; user_id: string; author_name?: string | null; sticker?: string | null; parent_comment_id?: string | null };
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
 const demos: Reel[] = [
@@ -105,6 +105,7 @@ export default function ReelsPage() {
   const [savedReels, setSavedReels] = useState<string[]>([]);
   const [mediaFitByReel, setMediaFitByReel] = useState<Record<string, 'cover' | 'contain'>>({});
   const [reelLikeCounts, setReelLikeCounts] = useState<Record<string, number>>({});
+  const [loveRequests, setLoveRequests] = useState<string[]>([]);
   const [reelCommentCounts, setReelCommentCounts] = useState<Record<string, number>>({});
   const [following, setFollowing] = useState<string[]>([]);
   const [blockedCreators, setBlockedCreators] = useState<string[]>([]);
@@ -114,6 +115,11 @@ export default function ReelsPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState('');
   const [commentError, setCommentError] = useState('');
+  const [commentLikeCounts, setCommentLikeCounts] = useState<Record<string, number>>({});
+  const [likedCommentIds, setLikedCommentIds] = useState<string[]>([]);
+  const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
+  const [commentSticker, setCommentSticker] = useState<string | null>(null);
+  const [commentRefreshVersion, setCommentRefreshVersion] = useState(0);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [videoMutedByReel, setVideoMutedByReel] = useState<Record<string, boolean>>({});
@@ -279,33 +285,30 @@ export default function ReelsPage() {
       setLikedBurstId(reel.id);
       window.setTimeout(() => setLikedBurstId((current) => (current === reel.id ? null : current)), 620);
     }
+    if (loveRequests.includes(reel.id)) return;
     const loved = liked.includes(reel.id);
     if (loved) {
       // A double-tap on an already loved Reel is visual feedback only. It must
       // never remove the reaction or reduce its count.
       if (source === 'double-tap') return;
+      setLoveRequests((current) => [...current, reel.id]);
       const { error } = await supabase.from('reel_reactions').delete().eq('reel_id', reel.id).eq('user_id', session.user.id);
       if (!error) {
         setLiked((current) => current.filter((id) => id !== reel.id));
         setReelLikeCounts((current) => ({ ...current, [reel.id]: Math.max(0, (current[reel.id] ?? 1) - 1) }));
       }
+      setLoveRequests((current) => current.filter((id) => id !== reel.id));
       return;
     }
+    setLoveRequests((current) => [...current, reel.id]);
     const { error } = await supabase
       .from('reel_reactions')
-      .upsert(
-        { reel_id: reel.id, user_id: session.user.id, reaction: 'love' },
-        { onConflict: 'reel_id,user_id', ignoreDuplicates: true },
-      )
-      .select('id')
-      .single();
+      .insert({ reel_id: reel.id, user_id: session.user.id, reaction: 'love' });
     if (!error || error.code === '23505') {
       setLiked((current) => [...new Set([...current, reel.id])]);
-      setReelLikeCounts((current) => ({
-        ...current,
-        [reel.id]: (current[reel.id] ?? 0) + 1,
-      }));
+      if (error?.code !== '23505') setReelLikeCounts((current) => ({ ...current, [reel.id]: (current[reel.id] ?? 0) + 1 }));
     }
+    setLoveRequests((current) => current.filter((id) => id !== reel.id));
   };
   const trackView = async (reel: Reel) => {
     if (!session || reel.demo) return;
@@ -358,43 +361,57 @@ export default function ReelsPage() {
     if (!commentReel) return;
     void supabase
       .from('reel_comments')
-      .select('id,body,created_at,user_id')
+      .select('id,body,created_at,user_id,author_name,sticker,parent_comment_id')
       .eq('reel_id', commentReel.id)
       .eq('hidden', false)
       .order('created_at', { ascending: false })
       .then(async ({ data }) => {
         const nextComments = (data ?? []) as Comment[];
         setComments(nextComments);
-        const userIds = [...new Set(nextComments.map(comment => comment.user_id).filter(Boolean))];
-        if (!userIds.length) return;
-        const { data: profileRows } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
-        const names = Object.fromEntries((profileRows ?? []).map((profile) => [profile.id, profile.display_name || 'User'])) as Record<string, string>;
-        setCommentDisplayNames((current) => ({ ...current, ...names }));
-
-        if (session?.user?.id) {
-          const currentUserName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
-          setCommentDisplayNames((current) => ({ ...current, [session.user.id]: currentUserName }));
-        }
+        const commentIds = nextComments.map((comment) => comment.id);
+        const { data: reactions } = commentIds.length
+          ? await supabase.from('reel_comment_reactions').select('comment_id,user_id').in('comment_id', commentIds)
+          : { data: [] };
+        const counts = ((reactions ?? []) as Array<{ comment_id: string }>).reduce<Record<string, number>>((current, row) => {
+          current[row.comment_id] = (current[row.comment_id] ?? 0) + 1;
+          return current;
+        }, {});
+        setCommentLikeCounts(counts);
+        setLikedCommentIds(((reactions ?? []) as Array<{ comment_id: string; user_id: string }>).filter((row) => row.user_id === session?.user.id).map((row) => row.comment_id));
       });
-  }, [commentReel]);
+  }, [commentReel, session?.user.id, commentRefreshVersion]);
+  useEffect(() => {
+    if (!commentReel) return;
+    const channel = supabase
+      .channel(`reel-comments-${commentReel.id}-${crypto.randomUUID()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comments', filter: `reel_id=eq.${commentReel.id}` }, () => setCommentRefreshVersion((current) => current + 1))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comment_reactions' }, () => setCommentRefreshVersion((current) => current + 1))
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [commentReel?.id]);
   const addComment = async () => {
-    if (!commentReel || !commentBody.trim()) return;
+    if (!commentReel || (!commentBody.trim() && !commentSticker)) return;
     if (!session) {
       navigate('/');
       return;
     }
     setCommentError('');
+    const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
+    const authorLabel = profile?.display_name?.trim() || session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+    const submittedBody = commentBody.trim() || commentSticker;
+    if (!submittedBody) return;
     const { data, error } = await supabase
       .from('reel_comments')
-      .insert({ reel_id: commentReel.id, user_id: session.user.id, body: commentBody.trim() })
-      .select('id,body,created_at,user_id')
+      .insert({ reel_id: commentReel.id, user_id: session.user.id, body: submittedBody, author_name: authorLabel, sticker: commentSticker, parent_comment_id: replyTarget?.id ?? null })
+      .select('id,body,created_at,user_id,author_name,sticker,parent_comment_id')
       .single();
     if (!error && data) {
-      const authorLabel = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
       setCommentDisplayNames((current) => ({ ...current, [session.user.id]: authorLabel }));
-      setComments((current) => [{ ...(data as Comment), profile_name: authorLabel }, ...current]);
+      setComments((current) => [{ ...(data as Comment), author_name: authorLabel }, ...current]);
       setReelCommentCounts((current) => ({ ...current, [commentReel.id]: (current[commentReel.id] ?? 0) + 1 }));
       setCommentBody('');
+      setCommentSticker(null);
+      setReplyTarget(null);
     } else setCommentError('Your comment could not be posted. Please try again.');
   };
   const reportComment = async (comment: Comment) => {
@@ -411,6 +428,19 @@ export default function ReelsPage() {
       setReportedCommentIds((current) => [...current, comment.id]);
       window.alert('You have already reported this comment.');
     } else window.alert('Your report could not be sent. Please try again.');
+  };
+  const toggleCommentLove = async (comment: Comment) => {
+    if (!session) {
+      navigate('/');
+      return;
+    }
+    const loved = likedCommentIds.includes(comment.id);
+    const { error } = loved
+      ? await supabase.from('reel_comment_reactions').delete().eq('comment_id', comment.id).eq('user_id', session.user.id)
+      : await supabase.from('reel_comment_reactions').insert({ comment_id: comment.id, user_id: session.user.id });
+    if (error && error.code !== '23505') return;
+    setLikedCommentIds((current) => loved ? current.filter((id) => id !== comment.id) : [...new Set([...current, comment.id])]);
+    if (error?.code !== '23505') setCommentLikeCounts((current) => ({ ...current, [comment.id]: Math.max(0, (current[comment.id] ?? 0) + (loved ? -1 : 1)) }));
   };
   const shareReel = async (reel: Reel, type: 'native' | 'copy' | 'whatsapp' | 'download' = 'native') => {
     const url = reel.demo ? `${window.location.origin}/dashboard/reels` : `${window.location.origin}/dashboard/reels/${reel.id}`;
@@ -440,7 +470,7 @@ export default function ReelsPage() {
   const totalCommentsFor = (reel: Reel) => reelCommentCounts[reel.id] ?? 0;
   const getCommentAuthorName = (comment: Comment) => {
     if (commentDisplayNames[comment.user_id]) return commentDisplayNames[comment.user_id];
-    if (comment.profile_name) return comment.profile_name;
+    if (comment.author_name) return comment.author_name;
     const userLabel = session?.user.user_metadata?.display_name || session?.user.user_metadata?.full_name || session?.user.email?.split('@')[0];
     return userLabel || 'User';
   };
@@ -655,7 +685,8 @@ export default function ReelsPage() {
                   <button
                     type="button"
                     onClick={() => void toggleFollow(reel.creator_id!)}
-                    className={`ml-2 inline-flex min-h-8 shrink-0 items-center rounded-full px-3 text-[11px] font-black shadow-lg ${following.includes(reel.creator_id) ? 'border border-white/25 bg-black/55 text-white' : 'bg-white text-black'}`}
+                    className={`ml-1 inline-flex min-h-7 shrink-0 items-center rounded-full px-2.5 text-[10px] font-black shadow-lg ${following.includes(reel.creator_id) ? 'border border-white/25 bg-black/55 text-white' : 'bg-white text-black'}`}
+                    aria-label={`${following.includes(reel.creator_id) ? 'Unfollow' : 'Follow'} @${reel.creator_profiles?.handle || 'creator'}`}
                   >
                     {following.includes(reel.creator_id) ? 'Following' : 'Follow'}
                   </button>
@@ -679,8 +710,8 @@ export default function ReelsPage() {
                 <button
                   type="button"
                   onClick={() => void toggleLove(reel, 'button')}
-                  disabled={reel.demo}
-                  className="grid justify-items-center gap-1 text-white"
+                  disabled={reel.demo || loveRequests.includes(reel.id)}
+                  className="grid justify-items-center gap-1 text-white disabled:opacity-70"
                 >
                   <span className="grid size-8 place-items-center rounded-full bg-black/55 backdrop-blur transition-transform duration-200 hover:scale-105">
                     <Heart
@@ -830,7 +861,7 @@ export default function ReelsPage() {
                 comments.map((comment) => (
                   <article
                     key={comment.id}
-                    className="rounded-xl bg-black/20 p-3 text-sm text-slate-200"
+                    className={`rounded-xl bg-black/20 p-3 text-sm text-slate-200 ${comment.parent_comment_id ? 'ml-5 border-l-2 border-[var(--dv-accent)]/40' : ''}`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <strong className="text-sm font-bold text-white">{getCommentAuthorName(comment)}</strong>
@@ -845,29 +876,40 @@ export default function ReelsPage() {
                         </button>
                       ) : null}
                     </div>
-                    <p>{comment.body}</p>
+                    {comment.sticker ? <span className="mr-1 inline-block rounded-lg bg-white/10 px-2 py-1 text-lg" aria-label="Comment sticker">{comment.sticker}</span> : null}
+                    <p className="inline">{comment.body}</p>
                     <time className="mt-2 block text-xs text-slate-500">
                       {new Date(comment.created_at).toLocaleString()}
                     </time>
+                    <div className="mt-2 flex items-center gap-3 text-[11px] font-bold text-slate-400">
+                      <button type="button" onClick={() => void toggleCommentLove(comment)} className={likedCommentIds.includes(comment.id) ? 'text-red-400' : 'hover:text-white'}>
+                        <Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(comment.id) ? 'fill-current' : ''}`} />{commentLikeCounts[comment.id] ?? 0}
+                      </button>
+                      <button type="button" onClick={() => { setReplyTarget(comment); setCommentSticker(null); }} className="hover:text-white">Reply</button>
+                    </div>
                   </article>
                 ))
               ) : (
                 <p className="py-6 text-center text-sm text-slate-400">Be the first to reply.</p>
               )}
             </div>
-            <div className="mt-4 flex gap-2">
+            {replyTarget ? <div className="mt-4 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs text-slate-300"><span>Replying to <strong>{getCommentAuthorName(replyTarget)}</strong></span><button type="button" onClick={() => setReplyTarget(null)} className="text-white">Cancel</button></div> : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['✨', '🔥', '👏', '🎬', '❤️'].map((sticker) => <button key={sticker} type="button" onClick={() => setCommentSticker((current) => current === sticker ? null : sticker)} className={`grid size-8 place-items-center rounded-lg text-base ${commentSticker === sticker ? 'bg-[var(--dv-accent)]/30 ring-1 ring-[var(--dv-accent)]' : 'bg-white/5 hover:bg-white/10'}`} aria-label={`Add ${sticker} sticker`}>{sticker}</button>)}
+            </div>
+            <div className="mt-2 flex gap-2">
               <input
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
                 maxLength={500}
-                placeholder={session ? 'Add a reply' : 'Sign in to reply'}
+                placeholder={session ? (replyTarget ? `Reply to ${getCommentAuthorName(replyTarget)}` : 'Add a comment') : 'Sign in to comment'}
                 disabled={!session}
                 className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-3 text-sm text-white"
               />
               <button
                 type="button"
                 onClick={() => void addComment()}
-                disabled={!session || !commentBody.trim()}
+                disabled={!session || (!commentBody.trim() && !commentSticker)}
                 className="rounded-xl bg-[var(--dv-accent)] px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 Post
