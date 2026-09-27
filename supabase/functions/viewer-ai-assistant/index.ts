@@ -14,6 +14,7 @@ Deno.serve(async (request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")
   const geminiKey = Deno.env.get("GEMINI_API_KEY")
+  const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.5-flash-lite"
   const authorization = request.headers.get("Authorization")
   if (!supabaseUrl || !anonKey || !geminiKey || !authorization) return reply({ error: "AI helper is not configured" }, 503)
 
@@ -28,16 +29,22 @@ Deno.serve(async (request) => {
 
   const { data: isAdmin } = await supabase.rpc("is_admin")
   const prompt = `You are Vision Guide, the helpful in-app assistant for DestiVerse Vision, a video-streaming and creator platform. Help with finding videos/Reels, using watchlists and Offline Watch, profiles, creator tools, comments, reporting, and account navigation. Be concise, friendly, and accurate. Do not claim you can see the user’s private account, perform actions, change subscriptions, access Google Drive, or contact support. Do not invent content, policy, payment, or technical facts. For account-security, legal, medical, financial, or emergency questions, direct the user to the appropriate professional or DestiVerse Help Center. Core DestiVerse features are free; subscriptions and coins are optional and must not be presented as required for viewing.\n\nViewer question: ${message}`
-  // Use a stable production model. Preview model names can be retired without
-  // notice, which previously made the membership helper appear unavailable.
-  const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
-    method: "POST",
-    headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.35, maxOutputTokens: 360, responseMimeType: "application/json", responseSchema: { type: "OBJECT", required: ["reply"], properties: { reply: { type: "STRING" } } } },
-    }),
-  })
+  // Gemini 2.5 access is restricted for some newer projects. Use the current
+  // stable Flash-Lite family by default, while retaining a server-side override.
+  let aiResponse: Response | undefined
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.35, maxOutputTokens: 360, responseMimeType: "application/json", responseSchema: { type: "OBJECT", required: ["reply"], properties: { reply: { type: "STRING" } } } },
+      }),
+    })
+    if (aiResponse.ok || ![429, 503].includes(aiResponse.status) || attempt === 2) break
+    await new Promise((resolve) => setTimeout(resolve, 350 * 2 ** attempt))
+  }
+  if (!aiResponse) return reply({ error: "The AI service could not start." }, 502)
   if (!aiResponse.ok) {
     const providerBody = await aiResponse.text()
     let providerMessage = "The AI service could not complete this request."

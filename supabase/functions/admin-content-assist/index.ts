@@ -152,6 +152,7 @@ Deno.serve(async (request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")
   const geminiKey = Deno.env.get("GEMINI_API_KEY")
+  const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.5-flash-lite"
   const authorization = request.headers.get("Authorization")
   if (!supabaseUrl || !anonKey || !geminiKey || !authorization) {
     return response({ error: "AI assistant is not configured" }, 503)
@@ -256,22 +257,23 @@ const responseSchema = isSiteSettingIdeasRequest
       },
     }
 
-const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
-    method: "POST",
-    headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: `${platformContext}\n${isSiteSettingIdeasRequest ? "You are a careful product communications strategist. Return valid JSON only." : isSiteSettingRequest ? "You are a careful product communications editor. Return valid JSON only." : isNotificationRequest ? "You are a careful viewer communications editor. Return valid JSON only." : isReleaseRequest ? "You are a careful product-release editor. Return valid JSON only." : "You are a careful streaming-platform metadata editor. Return valid JSON only."}` }],
-      },
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        responseMimeType: "application/json",
-        responseSchema,
-      },
+let aiResponse: Response | undefined
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: `${platformContext}\n${isSiteSettingIdeasRequest ? "You are a careful product communications strategist. Return valid JSON only." : isSiteSettingRequest ? "You are a careful product communications editor. Return valid JSON only." : isNotificationRequest ? "You are a careful viewer communications editor. Return valid JSON only." : isReleaseRequest ? "You are a careful product-release editor. Return valid JSON only." : "You are a careful streaming-platform metadata editor. Return valid JSON only."}` }],
+        },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: "application/json", responseSchema },
+      }),
     })
-  })
+    if (aiResponse.ok || ![429, 503].includes(aiResponse.status) || attempt === 2) break
+    await new Promise((resolve) => setTimeout(resolve, 350 * 2 ** attempt))
+  }
+  if (!aiResponse) return response({ error: "AI provider could not start" }, 502)
   if (!aiResponse.ok) {
     const providerBody = await aiResponse.text()
     let providerMessage = "AI provider request failed"

@@ -18,3 +18,18 @@ export async function enablePushNotifications() {
   const { error } = await supabase.from("push_subscriptions").upsert({ user_id: auth.user.id, endpoint: subscription.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth, user_agent: navigator.userAgent, active: true }, { onConflict: "endpoint" })
   if (error) throw error
 }
+
+export async function disablePushNotifications() {
+  const registration = await navigator.serviceWorker.ready
+  const subscription = await registration.pushManager.getSubscription()
+  const endpoint = subscription?.endpoint
+  await subscription?.unsubscribe()
+  if (!endpoint) return
+  const { error } = await supabase.from("push_subscriptions").update({ active: false }).eq("endpoint", endpoint)
+  if (error) throw error
+}
+
+export async function getPushPermission() {
+  if (!("Notification" in window) || !("PushManager" in window)) return "unsupported" as const
+  return Notification.permission
+}
