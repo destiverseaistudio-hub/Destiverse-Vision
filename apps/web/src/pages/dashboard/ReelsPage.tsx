@@ -488,6 +488,37 @@ export default function ReelsPage() {
   };
   const rootComments = comments.filter((comment) => !comment.parent_comment_id);
   const repliesFor = (commentId: string) => comments.filter((comment) => comment.parent_comment_id === commentId);
+  const CommentThread = ({ comment, depth = 0 }: { comment: Comment; depth?: number }) => {
+    const replies = repliesFor(comment.id);
+    const repliesExpanded = expandedReplyThreads.includes(comment.id);
+    const selectReply = () => {
+      setReplyTarget(comment);
+      setCommentSticker(null);
+      setEmojiPickerOpen(false);
+      window.requestAnimationFrame(() => commentInputRef.current?.focus());
+    };
+    return (
+      <article className={`rounded-2xl border border-white/[.07] bg-gradient-to-br from-white/[.07] to-black/10 p-3.5 text-sm text-slate-200 shadow-sm ${depth ? 'ml-2 border-l-2 border-l-[var(--dv-accent)]/45' : ''}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <strong className="block truncate text-sm font-bold text-white">{getCommentAuthorName(comment)}</strong>
+            <time className="mt-0.5 block text-[10px] text-slate-500">{new Date(comment.created_at).toLocaleString()}</time>
+          </div>
+          {session && comment.user_id !== session.user.id ? <button type="button" onClick={() => void reportComment(comment)} disabled={reportedCommentIds.includes(comment.id)} className="shrink-0 text-[10px] font-bold text-slate-500 hover:text-slate-200 disabled:opacity-50">{reportedCommentIds.includes(comment.id) ? 'Reported' : 'Report'}</button> : null}
+        </div>
+        <div className="mt-2 leading-6 text-slate-100">
+          {comment.sticker ? <span className="mr-1.5 inline-block rounded-lg bg-white/10 px-2 py-0.5 text-lg" aria-label="Comment sticker">{comment.sticker}</span> : null}
+          {comment.body !== 'Sticker' ? <span>{comment.body}</span> : null}
+        </div>
+        <div className="mt-3 flex items-center gap-4 text-[11px] font-bold text-slate-400">
+          <button type="button" onClick={() => void toggleCommentLove(comment)} className={likedCommentIds.includes(comment.id) ? 'text-red-400' : 'hover:text-white'}><Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(comment.id) ? 'fill-current' : ''}`} />{commentLikeCounts[comment.id] ?? 0}</button>
+          <button type="button" onClick={selectReply} className="hover:text-white">Reply</button>
+        </div>
+        {replies.length ? <button type="button" onClick={() => setExpandedReplyThreads((current) => repliesExpanded ? current.filter((id) => id !== comment.id) : [...current, comment.id])} aria-expanded={repliesExpanded} className="mt-3 rounded-full bg-[var(--dv-accent)]/10 px-2.5 py-1 text-[11px] font-bold text-[var(--dv-accent)] hover:bg-[var(--dv-accent)]/20">{repliesExpanded ? 'Hide' : 'View'} {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</button> : null}
+        {repliesExpanded ? <div className="mt-3 space-y-2 border-l border-white/10 pl-2">{replies.map((reply) => <CommentThread key={reply.id} comment={reply} depth={depth + 1} />)}</div> : null}
+      </article>
+    );
+  };
   const normalizeSoundValue = (value?: string | null) => (value ?? 'Original sound · DestiVerse').trim().replace(/\s+/g, ' ');
   const soundPagePath = (reel: Reel) => `/dashboard/sounds/${encodeURIComponent(normalizeSoundValue(reel.audio_label))}`;
   const triggerSoundSearch = (reel: Reel) => {
@@ -527,6 +558,15 @@ export default function ReelsPage() {
     if (target.closest('button, a, input, textarea, select, [role="dialog"]')) return;
     handleCenterTap(reel);
   };
+  const activateReel = (reelId: string) => {
+    Object.entries(videoRefs.current).forEach(([id, video]) => {
+      if (id !== reelId && video) {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+    setActiveReelId((current) => current === reelId ? current : reelId);
+  };
   useEffect(() => {
     if (!feedRef.current || !feed.length) return;
     const container = feedRef.current;
@@ -539,10 +579,10 @@ export default function ReelsPage() {
           .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
         if (visible) {
           const nextId = (visible.target as HTMLElement).dataset.reelId ?? null;
-          if (nextId) setActiveReelId(nextId);
+          if (nextId) activateReel(nextId);
         }
       },
-      { root: container, threshold: [0.6, 0.8] },
+      { root: container, rootMargin: '-5% 0px -5%', threshold: [0.51, 0.75] },
     );
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
@@ -639,9 +679,12 @@ export default function ReelsPage() {
                 playsInline
                 loop
                 muted={videoMutedByReel[reel.id] ?? false}
-                preload="metadata"
+                preload={activeReelId === reel.id ? 'auto' : 'metadata'}
                 onLoadStart={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
+                onWaiting={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
+                onStalled={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
+                onPlaying={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onLoadedMetadata={(event) => {
                   const video = event.currentTarget as HTMLVideoElement | null;
                   if (!video || !Number.isFinite(video.videoWidth) || !Number.isFinite(video.videoHeight)) return;
@@ -654,7 +697,7 @@ export default function ReelsPage() {
                 onPlay={() => void trackView(reel)}
               />
             )}
-            {reelLoading[reel.id] ? (
+            {reelLoading[reel.id] && activeReelId === reel.id ? (
               <div className="absolute inset-0 z-20 grid place-items-center bg-black/35">
                 <div className="grid size-12 place-items-center rounded-full border border-white/25 bg-black/45 backdrop-blur-md">
                   <div className="size-6 animate-spin rounded-full border-2 border-white/25 border-t-[var(--dv-accent)]" />
@@ -875,51 +918,9 @@ export default function ReelsPage() {
                 Close
               </button>
             </div>
-            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto">
+            <div className="mt-4 max-h-[45dvh] space-y-3 overflow-y-auto pr-1 [scrollbar-color:rgba(255,255,255,.25)_transparent]">
               {rootComments.length ? (
-                rootComments.map((comment) => {
-                  const replies = repliesFor(comment.id);
-                  const repliesExpanded = expandedReplyThreads.includes(comment.id);
-                  return (
-                  <article
-                    key={comment.id}
-                    className="rounded-xl bg-black/20 p-3 text-sm text-slate-200"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <strong className="text-sm font-bold text-white">{getCommentAuthorName(comment)}</strong>
-                      {session && comment.user_id !== session.user.id ? (
-                        <button
-                          type="button"
-                          onClick={() => void reportComment(comment)}
-                          disabled={reportedCommentIds.includes(comment.id)}
-                          className="text-[10px] font-bold text-slate-400 disabled:opacity-50"
-                        >
-                          {reportedCommentIds.includes(comment.id) ? 'Reported' : 'Report'}
-                        </button>
-                      ) : null}
-                    </div>
-                    {comment.sticker ? <span className="mr-1 inline-block rounded-lg bg-white/10 px-2 py-1 text-lg" aria-label="Comment sticker">{comment.sticker}</span> : null}
-                    {comment.body !== 'Sticker' ? <p className="inline">{comment.body}</p> : null}
-                    <time className="mt-2 block text-xs text-slate-500">
-                      {new Date(comment.created_at).toLocaleString()}
-                    </time>
-                    <div className="mt-2 flex items-center gap-3 text-[11px] font-bold text-slate-400">
-                      <button type="button" onClick={() => void toggleCommentLove(comment)} className={likedCommentIds.includes(comment.id) ? 'text-red-400' : 'hover:text-white'}>
-                        <Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(comment.id) ? 'fill-current' : ''}`} />{commentLikeCounts[comment.id] ?? 0}
-                      </button>
-                      <button type="button" onClick={() => { setReplyTarget(comment); setCommentSticker(null); setEmojiPickerOpen(false); window.requestAnimationFrame(() => commentInputRef.current?.focus()); }} className="hover:text-white">Reply</button>
-                    </div>
-                    {replies.length ? <button type="button" onClick={() => setExpandedReplyThreads((current) => repliesExpanded ? current.filter((id) => id !== comment.id) : [...current, comment.id])} className="mt-3 text-xs font-bold text-[var(--dv-accent)]">{repliesExpanded ? 'Hide' : 'View'} {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</button> : null}
-                    {repliesExpanded ? <div className="mt-3 space-y-2 border-l-2 border-[var(--dv-accent)]/35 pl-3">{replies.map((reply) => (
-                      <article key={reply.id} className="rounded-lg bg-white/[.04] p-2.5 text-sm">
-                        <strong className="text-xs font-bold text-white">{getCommentAuthorName(reply)}</strong>
-                        <div className="mt-1">{reply.sticker ? <span className="mr-1 inline-block rounded bg-white/10 px-1.5 text-base">{reply.sticker}</span> : null}{reply.body !== 'Sticker' ? <span>{reply.body}</span> : null}</div>
-                        <div className="mt-2 flex items-center gap-3 text-[11px] font-bold text-slate-400"><button type="button" onClick={() => void toggleCommentLove(reply)} className={likedCommentIds.includes(reply.id) ? 'text-red-400' : 'hover:text-white'}><Heart className={`mr-1 inline size-3 ${likedCommentIds.includes(reply.id) ? 'fill-current' : ''}`} />{commentLikeCounts[reply.id] ?? 0}</button><button type="button" onClick={() => { setReplyTarget(comment); setEmojiPickerOpen(false); window.requestAnimationFrame(() => commentInputRef.current?.focus()); }} className="hover:text-white">Reply</button></div>
-                      </article>
-                    ))}</div> : null}
-                  </article>
-                  );
-                })
+                rootComments.map((comment) => <CommentThread key={comment.id} comment={comment} />)
               ) : (
                 <p className="py-6 text-center text-sm text-slate-400">Be the first to reply.</p>
               )}
