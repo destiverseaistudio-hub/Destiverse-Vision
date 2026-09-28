@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bookmark, CalendarDays, Clock3, Mail, Pencil, UserCircle2 } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -182,6 +182,7 @@ export default function ProfilePage() {
           <p className="text-sm text-slate-400">In progress</p>
         </div>
       </section>
+      <Link to="/dashboard/saved-reels" className="flex items-center justify-between rounded-[var(--dv-radius-card)] border border-[var(--dv-border)] bg-[var(--dv-surface)] p-4 text-white shadow-[var(--dv-shadow-card)]"><span><Bookmark className="size-5 text-[var(--dv-accent)]" /><strong className="mt-2 block">Saved Reels</strong><small className="text-slate-400">Open every Reel you have saved.</small></span><span className="text-sm font-bold text-[var(--dv-accent)]">Open</span></Link>
 
       <section className="dv-surface rounded-[var(--dv-radius-card)] border border-[var(--dv-border)] p-6 shadow-[var(--dv-shadow-card)] sm:p-8">
         <div className="flex items-start gap-3">

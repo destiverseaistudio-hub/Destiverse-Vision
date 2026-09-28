@@ -11,13 +11,25 @@ function writeRecords(records: OfflineRecord[]) { localStorage.setItem(recordsKe
 export function getOfflineRecords() { return readRecords() }
 export function isItemDownloaded(id: string): boolean { return readRecords().some(record => record.id === id) }
 
+export async function requestDeviceStoragePermission() {
+  if (!navigator.storage?.persist) return false
+  return navigator.storage.persist()
+}
+
+export async function getDeviceStorageEstimate() {
+  return navigator.storage?.estimate?.() ?? {}
+}
+
 export async function downloadForOffline(item: { id: string; title: string; source: string }) {
   const response = await fetch(item.source)
   if (!response.ok) throw new Error(`Download failed (${response.status}).`)
+  const bytes = Number(response.headers.get("content-length") ?? 0)
+  if (bytes > 100 * 1024 * 1024) throw new Error("This download is larger than the 100 MB device-download limit.")
+  const estimate = await getDeviceStorageEstimate()
+  if (bytes && estimate.quota && (estimate.usage ?? 0) + bytes > estimate.quota) throw new Error("Your device does not have enough browser storage for this download.")
   const copy = response.clone()
   const cache = await caches.open(cacheName)
   await cache.put(item.source, copy)
-  const bytes = Number(response.headers.get("content-length") ?? 0)
   const records = readRecords().filter(record => record.id !== item.id)
   writeRecords([{ id: item.id, title: item.title, source: item.source, savedAt: new Date().toISOString(), bytes }, ...records])
 }

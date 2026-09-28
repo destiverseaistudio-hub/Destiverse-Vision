@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } })
 const allowedTypes = new Set(["video/mp4", "video/webm", "video/quicktime"])
-const maximumUploadBytes = 65 * 1024 * 1024
+const maximumUploadBytes = 100 * 1024 * 1024
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors })
@@ -16,7 +16,7 @@ Deno.serve(async (request) => {
   let input: { file_name?: string; file_size?: number; content_type?: string; max_duration_seconds?: number; purpose?: "reel" | "catalog" }
   try { input = await request.json() } catch { return json({ error: "Invalid upload request." }, 400) }
   if (!input.file_name?.trim() || !input.file_size || !input.content_type || !allowedTypes.has(input.content_type)) return json({ error: "Choose an MP4, WebM, or MOV video file." }, 400)
-  if (input.file_size > maximumUploadBytes) return json({ error: "Choose a video smaller than 65 MB." }, 400)
+  if (input.file_size > maximumUploadBytes) return json({ error: "Choose a video smaller than 100 MB." }, 400)
   const [{ data: application }, { data: entitlement }] = await Promise.all([
     supabase.from("creator_applications").select("status").eq("user_id", identity.user.id).maybeSingle(),
     supabase.from("creator_plan_subscriptions").select("status,expires_at").eq("user_id", identity.user.id).maybeSingle(),

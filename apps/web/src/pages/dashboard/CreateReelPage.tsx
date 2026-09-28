@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-const maxReelUploadBytes = 65 * 1024 * 1024;
+const maxReelUploadBytes = 100 * 1024 * 1024;
 type CloudflareUpload = { upload_url: string; stream_uid: string; playback_url: string; thumbnail_url: string };
 
 export default function CreateReelPage() {
@@ -71,7 +71,7 @@ export default function CreateReelPage() {
       return;
     }
     if (file.size > maxReelUploadBytes) {
-      setMessage('Choose a video smaller than 65 MB. Compress or trim the video, then try again.');
+      setMessage('Choose a video smaller than 100 MB. Compress or trim the video, then try again.');
       return;
     }
     setBusy(true);
@@ -260,7 +260,7 @@ export default function CreateReelPage() {
               </div>
             ) : null}
             <p className="text-xs leading-5 text-slate-500">
-              MP4, WebM, or MOV; maximum 65 MB. Files upload directly to Cloudflare Stream and are reviewed before publishing.
+              MP4, WebM, or MOV; maximum 100 MB. Files upload directly to Cloudflare Stream and are reviewed before publishing.
               Every Reel is reviewed before publishing.
             </p>
             <button

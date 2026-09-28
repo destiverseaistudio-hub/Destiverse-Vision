@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 
 import { useContent } from "@/contexts/ContentContext"
 import { supabase } from "@/lib/supabase"
-import { downloadForOffline, getOfflineRecords, getOfflineVideoUrl, removeOfflineDownload, type OfflineRecord } from "@/services/offline"
+import { downloadForOffline, getOfflineRecords, getOfflineVideoUrl, removeOfflineDownload, requestDeviceStoragePermission, type OfflineRecord } from "@/services/offline"
 
 type DownloadItem = { id: string; title: string; source: string; kind: "Video" | "Reel" }
 type ReelRow = { id: string; title: string; video_url: string }
@@ -19,11 +19,13 @@ export default function OfflineWatchPage() {
   const [playing, setPlaying] = useState<{ title: string; url: string } | null>(null)
   const [estimate, setEstimate] = useState<{ usage?: number; quota?: number }>({})
   const [driveConnected, setDriveConnected] = useState(false)
+  const [storageProtected, setStorageProtected] = useState(false)
   const refresh = () => setRecords(getOfflineRecords())
   const mainVideos: DownloadItem[] = content.filter((item) => item.videoSrc).map((item) => ({ id: `content:${item.id}`, title: item.title, source: item.videoSrc!, kind: "Video" }))
 
   useEffect(() => {
     void navigator.storage?.estimate?.().then((value) => setEstimate(value))
+    void navigator.storage?.persisted?.().then(setStorageProtected)
     void supabase.auth.getSession().then(({ data }) => setDriveConnected(Boolean(data.session?.provider_token)))
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setDriveConnected(Boolean(session?.provider_token)))
     const loadReels = async () => {
@@ -44,6 +46,10 @@ export default function OfflineWatchPage() {
     catch (error) { setMessage(error instanceof Error ? error.message : "Could not download this video.") }
     finally { setBusyId("") }
   }
+  const requestDeviceStorage = async () => {
+    const granted = await requestDeviceStoragePermission(); setStorageProtected(granted)
+    setMessage(granted ? "This browser will try to keep your offline files on this device." : "Your browser did not grant persistent storage. Downloads can still work, but the browser may clear them when space is low.")
+  }
   const watch = async (record: OfflineRecord) => {
     try { setPlaying({ title: record.title, url: await getOfflineVideoUrl(record) }) }
     catch (error) { setMessage(error instanceof Error ? error.message : "Could not open offline video.") }
@@ -59,7 +65,7 @@ export default function OfflineWatchPage() {
   return <main className="mx-auto max-w-5xl space-y-7 pb-10">
     <section className="rounded-3xl border border-white/10 bg-[var(--dv-surface)] p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[var(--dv-accent)]">Your device</p><h1 className="mt-2 text-3xl font-black text-white">Offline Watch</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Download videos and Reels into this browser for offline playback. You control every download and can remove it whenever you want.</p></div><HardDriveDownload className="size-10 text-[var(--dv-accent)]" /></div><p className="mt-5 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-400">Browser storage: {estimate.quota ? `${formatBytes(estimate.usage ?? 0)} used of ${formatBytes(estimate.quota)}` : "storage estimate unavailable"}. Storage capacity is set by the device and browser; DestiVerse cannot reserve a fixed amount.</p></section>
 
-    <section><h2 className="text-xl font-black text-white">Available downloads</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{available.map((item) => <article key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[var(--dv-surface)] p-4"><div className="min-w-0"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{item.kind}</span><strong className="block truncate text-sm text-white">{item.title}</strong></div><button type="button" disabled={Boolean(busyId)} onClick={() => void save(item)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--dv-accent)] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Download className="size-4" /> {busyId === item.id ? "Downloading..." : "Offline"}</button></article>)}</div>{!available.length ? <p className="mt-4 text-sm text-slate-400">No downloadable videos are available yet.</p> : null}</section>
+    <section><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black text-white">Available downloads</h2><button type="button" onClick={() => void requestDeviceStorage()} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-bold text-white">{storageProtected ? "Device storage enabled" : "Allow device storage"}</button></div><p className="mt-2 text-xs text-slate-400">Offline files are stored only in this browser/device, never copied into DestiVerse backend storage. Maximum file size: 100 MB.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{available.map((item) => <article key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[var(--dv-surface)] p-4"><div className="min-w-0"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{item.kind}</span><strong className="block truncate text-sm text-white">{item.title}</strong></div><button type="button" disabled={Boolean(busyId)} onClick={() => void save(item)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--dv-accent)] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Download className="size-4" /> {busyId === item.id ? "Downloading..." : "Offline"}</button></article>)}</div>{!available.length ? <p className="mt-4 text-sm text-slate-400">No downloadable videos are available yet.</p> : null}</section>
 
     <section><h2 className="text-xl font-black text-white">Saved offline</h2>{records.length ? <div className="mt-4 grid gap-3">{records.map((record) => <article key={record.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[var(--dv-surface)] p-4"><div><strong className="block text-white">{record.title}</strong><span className="text-xs text-slate-400">{formatBytes(record.bytes)} · saved {new Date(record.savedAt).toLocaleDateString()}</span></div><div className="flex gap-2"><button type="button" onClick={() => void watch(record)} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-black"><Play className="size-4 fill-current" /> Watch</button><button type="button" onClick={() => void removeOfflineDownload(record.id).then(refresh)} className="grid size-9 place-items-center rounded-xl border border-red-400/30 text-red-200" aria-label={`Remove ${record.title}`}><Trash2 className="size-4" /></button></div></article>)}</div> : <p className="mt-4 text-sm text-slate-400">Nothing downloaded yet.</p>}</section>
 

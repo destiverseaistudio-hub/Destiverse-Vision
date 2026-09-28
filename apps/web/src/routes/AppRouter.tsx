@@ -31,6 +31,7 @@ import MembershipPage from "@/pages/dashboard/MembershipPage"
 import PaymentReturnPage from "@/pages/dashboard/PaymentReturnPage"
 import SoundPage from "@/pages/dashboard/SoundPage"
 import LiveStreamsPage from "@/pages/dashboard/LiveStreamsPage"
+import SavedReelsPage from "@/pages/dashboard/SavedReelsPage"
 import ProtectedRoute from "@/routes/ProtectedRoute"
 
 export default function AppRouter() {
@@ -66,6 +67,7 @@ export default function AppRouter() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="reels" element={<ReelsPage />} />
+        <Route path="saved-reels" element={<SavedReelsPage />} />
         <Route path="reels/:reelId" element={<ReelDetailPage />} />
         <Route path="sounds/:soundKey" element={<SoundPage />} />
         <Route path="live" element={<LiveStreamsPage />} />
