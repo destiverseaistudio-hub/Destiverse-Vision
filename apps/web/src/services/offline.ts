@@ -50,3 +50,22 @@ export async function getOfflineVideoUrl(record: OfflineRecord) {
   if (!response) throw new Error("This offline file is no longer available on this device.")
   return URL.createObjectURL(await response.blob())
 }
+
+export async function copyOfflineDownloadToGoogleDrive(record: OfflineRecord, accessToken: string) {
+  const response = await (await caches.open(cacheName)).match(record.source)
+  if (!response) throw new Error("Download this item to this device before copying it to Google Drive.")
+  const file = await response.blob()
+  const extension = file.type === "video/webm" ? "webm" : "mp4"
+  const name = `${record.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "destiverse-download"}.${extension}`
+  const boundary = `destiverse-${crypto.randomUUID()}`
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, description: "Copied from DestiVerse Offline Watch" })}\r\n`,
+    `--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`, file, `\r\n--${boundary}--`,
+  ])
+  const upload = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body,
+  })
+  const payload = await upload.json().catch(() => null)
+  if (!upload.ok || !payload?.id) throw new Error(payload?.error?.message || "Google Drive could not save this download.")
+  return payload as { id: string; name: string; webViewLink?: string }
+}
