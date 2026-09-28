@@ -1,10 +1,10 @@
+import { Bot } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { uploadWithRetry } from '@/services/uploads';
-
-const maxReelUploadBytes = 50 * 1024 * 1024;
+const maxReelUploadBytes = 65 * 1024 * 1024;
+type CloudflareUpload = { upload_url: string; stream_uid: string; playback_url: string; thumbnail_url: string };
 
 export default function CreateReelPage() {
   const { session } = useAuth();
@@ -23,6 +23,8 @@ export default function CreateReelPage() {
   const [soundFile, setSoundFile] = useState<File | null>(null);
   const [soundPreviewUrl, setSoundPreviewUrl] = useState('');
   const [soundLabel, setSoundLabel] = useState(() => searchParams.get('sound') ?? '');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiRemaining, setAiRemaining] = useState<number | null>(null);
   useEffect(() => {
     if (!session) return;
     const load = async () => {
@@ -69,7 +71,7 @@ export default function CreateReelPage() {
       return;
     }
     if (file.size > maxReelUploadBytes) {
-      setMessage('Choose a video smaller than 50 MB. Compress or trim the video, then try again.');
+      setMessage('Choose a video smaller than 65 MB. Compress or trim the video, then try again.');
       return;
     }
     setBusy(true);
@@ -78,14 +80,24 @@ export default function CreateReelPage() {
     if (hasSoundSelection) {
       setSoundLabel(selectedSoundLabel);
     }
-    const path = `${session.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-    const { error: uploadError } = await uploadWithRetry('creator-reels', path, file, { contentType: file.type, cacheControl: '31536000', upsert: false });
-    if (uploadError) {
-      const detail = uploadError.message || 'The storage service did not accept the upload.';
-      const gatewayFailure = /520|gateway|network|fetch/i.test(detail);
-      setMessage(gatewayFailure
-        ? 'Upload was interrupted by the storage gateway. Check your connection, use a video below 50 MB, and try again. Your video is still selected.'
-        : `Upload failed: ${detail} Your video is still selected; you can try again.`);
+    const { data: uploadData, error: preparationError } = await supabase.functions.invoke('cloudflare-stream-direct-upload', {
+      body: { file_name: file.name, file_size: file.size, content_type: file.type, purpose: 'reel' },
+    });
+    if (preparationError || !uploadData?.upload_url || !uploadData?.playback_url) {
+      setMessage(uploadData?.error || 'Cloudflare Stream could not prepare this Reel upload.');
+      setUploadStage('idle');
+      setBusy(false);
+      return;
+    }
+    setMessage('Uploading securely to Cloudflare Stream… Keep this page open until it completes.');
+    const cloudflare = uploadData as CloudflareUpload;
+    try {
+      const body = new FormData();
+      body.append('file', file, file.name);
+      const uploadResponse = await fetch(cloudflare.upload_url, { method: 'POST', body });
+      if (!uploadResponse.ok) throw new Error('Cloudflare did not accept the file.');
+    } catch (uploadError) {
+      setMessage(uploadError instanceof Error ? `${uploadError.message} Your video is still selected; please try again.` : 'Upload was interrupted. Your video is still selected; please try again.');
       setUploadStage('idle');
       setBusy(false);
       return;
@@ -96,7 +108,8 @@ export default function CreateReelPage() {
         creator_id: session.user.id,
         title: title.trim(),
         caption: caption.trim(),
-        video_url: path,
+        video_url: cloudflare.playback_url,
+        poster_url: cloudflare.thumbnail_url,
         audio_label: selectedSoundLabel || null,
       })
       .select('id,status')
@@ -128,6 +141,20 @@ export default function CreateReelPage() {
     setSoundLabel('');
     setUploadStage('idle');
     setBusy(false);
+  }
+  async function fillWithAi() {
+    if (!caption.trim()) { setMessage('Write a short description in the caption box first, then use AI fill.'); return; }
+    setAiBusy(true); setMessage('');
+    const { data, error } = await supabase.functions.invoke('creator-reel-assist', { body: { description: caption } });
+    if (error || !data) setMessage(data?.error || 'Creator AI could not prepare a draft.');
+    else {
+      setTitle(data.title || title);
+      setCaption(data.caption || caption);
+      if (!soundFile) setSoundLabel(data.sound_label || soundLabel);
+      setAiRemaining(typeof data.remaining === 'number' ? data.remaining : null);
+      setMessage(`AI draft ready. Review it before submitting.${typeof data.remaining === 'number' ? ` ${data.remaining} free drafts remain this week.` : ''}`);
+    }
+    setAiBusy(false);
   }
   const access = {
     loading: 'Checking creator access…',
@@ -178,6 +205,11 @@ export default function CreateReelPage() {
                 className="rounded-xl border border-white/15 bg-black/20 p-3 text-white"
               />
             </label>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+              <span>Describe your Reel, then let AI prepare a title, caption, and original sound label. Five free drafts weekly.</span>
+              <button type="button" onClick={() => void fillWithAi()} disabled={aiBusy || !caption.trim()} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 font-bold text-white disabled:opacity-50"><Bot className="size-4" /> {aiBusy ? 'Drafting…' : 'AI fill'}</button>
+              {aiRemaining !== null ? <span className="font-bold text-[var(--dv-accent)]">{aiRemaining} left</span> : null}
+            </div>
             <label className="grid gap-2 text-sm font-semibold text-white">
               Vertical video
               <input
@@ -228,7 +260,7 @@ export default function CreateReelPage() {
               </div>
             ) : null}
             <p className="text-xs leading-5 text-slate-500">
-              MP4, WebM, or MOV; maximum 50 MB on the current storage plan. Upload only content you own or can legally share.
+              MP4, WebM, or MOV; maximum 65 MB. Files upload directly to Cloudflare Stream and are reviewed before publishing.
               Every Reel is reviewed before publishing.
             </p>
             <button

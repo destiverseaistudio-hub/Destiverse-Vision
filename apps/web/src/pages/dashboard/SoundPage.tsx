@@ -1,4 +1,4 @@
-import { ArrowLeft, Heart, Music2, Play, Share2 } from 'lucide-react';
+import { ArrowLeft, Bookmark, Heart, Music2, Play, Share2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +23,7 @@ export default function SoundPage() {
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [soundSaved, setSoundSaved] = useState(false);
 
   const soundLabel = useMemo(() => {
     const decoded = decodeURIComponent(soundKey ?? 'Original sound · DestiVerse');
@@ -65,6 +66,19 @@ export default function SoundPage() {
     void load();
   }, [soundLabel, session]);
 
+  useEffect(() => {
+    if (!session || !soundKey) { setSoundSaved(false); return; }
+    void supabase.from('reel_sound_saves').select('sound_key').eq('user_id', session.user.id).eq('sound_key', soundKey).maybeSingle().then(({ data }) => setSoundSaved(Boolean(data)));
+  }, [session, soundKey]);
+
+  const toggleSoundSave = async () => {
+    if (!session || !soundKey) { navigate('/login'); return; }
+    const { error } = soundSaved
+      ? await supabase.from('reel_sound_saves').delete().eq('user_id', session.user.id).eq('sound_key', soundKey)
+      : await supabase.from('reel_sound_saves').upsert({ user_id: session.user.id, sound_key: soundKey, sound_label: soundLabel }, { onConflict: 'user_id,sound_key' });
+    if (!error) setSoundSaved((value) => !value);
+  };
+
   const toggleLike = async (reelId: string) => {
     if (!session) {
       navigate('/login');
@@ -103,9 +117,7 @@ export default function SoundPage() {
             <p className="text-[10px] font-black uppercase tracking-[.22em] text-[var(--dv-accent)]">Sound</p>
             <h1 className="mt-2 text-3xl font-black text-white">{soundLabel}</h1>
           </div>
-          <button type="button" onClick={() => navigate(`/dashboard/create-reel?sound=${encodeURIComponent(soundLabel)}`)} className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-sm font-black text-white">
-            <Play className="size-4 fill-current" /> Use sound
-          </button>
+          <div className="flex gap-2"><button type="button" onClick={() => void toggleSoundSave()} className={`inline-flex items-center gap-2 rounded-full border px-3 py-2.5 text-sm font-black ${soundSaved ? 'border-[var(--dv-accent)] bg-[var(--dv-accent)]/15 text-white' : 'border-white/15 text-white'}`}><Bookmark className={`size-4 ${soundSaved ? 'fill-current' : ''}`} /> {soundSaved ? 'Saved' : 'Save'}</button><button type="button" onClick={() => navigate(`/dashboard/create-reel?sound=${encodeURIComponent(soundLabel)}`)} className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-sm font-black text-white"><Play className="size-4 fill-current" /> Use sound</button></div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">

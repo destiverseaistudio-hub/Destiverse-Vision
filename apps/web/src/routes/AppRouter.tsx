@@ -30,6 +30,7 @@ import OfflineWatchPage from "@/pages/dashboard/OfflineWatchPage"
 import MembershipPage from "@/pages/dashboard/MembershipPage"
 import PaymentReturnPage from "@/pages/dashboard/PaymentReturnPage"
 import SoundPage from "@/pages/dashboard/SoundPage"
+import LiveStreamsPage from "@/pages/dashboard/LiveStreamsPage"
 import ProtectedRoute from "@/routes/ProtectedRoute"
 
 export default function AppRouter() {
@@ -67,6 +68,7 @@ export default function AppRouter() {
         <Route path="reels" element={<ReelsPage />} />
         <Route path="reels/:reelId" element={<ReelDetailPage />} />
         <Route path="sounds/:soundKey" element={<SoundPage />} />
+        <Route path="live" element={<LiveStreamsPage />} />
         <Route path="create-reel" element={<CreateReelPage />} />
         <Route path="creator-studio" element={<CreatorStudioPage />} />
         <Route path="creator-film-studio" element={<CreatorFilmStudioPage />} />

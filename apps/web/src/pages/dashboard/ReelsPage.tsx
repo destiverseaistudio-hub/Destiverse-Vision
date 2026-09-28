@@ -13,6 +13,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Radio,
   Search,
   Share2,
   Smile,
@@ -299,6 +300,7 @@ export default function ReelsPage() {
       setFollowing((current) =>
         isFollowing ? current.filter((id) => id !== creatorId) : [...current, creatorId],
       );
+    if (!error && !isFollowing) void supabase.functions.invoke('notify-creator-event', { body: { type: 'follow', creator_id: creatorId } });
   };
   const move = (direction: 1 | -1) => {
     if (!feedRef.current) return;
@@ -336,6 +338,7 @@ export default function ReelsPage() {
     if (!error || error.code === '23505') {
       setLiked((current) => [...new Set([...current, reel.id])]);
       if (error?.code !== '23505') setReelLikeCounts((current) => ({ ...current, [reel.id]: (current[reel.id] ?? 0) + 1 }));
+      if (!error && reel.creator_id) void supabase.functions.invoke('notify-creator-event', { body: { type: 'like', reel_id: reel.id } });
     }
     setLoveRequests((current) => current.filter((id) => id !== reel.id));
   };
@@ -715,7 +718,7 @@ export default function ReelsPage() {
           <h1 className="text-2xl font-black text-white">Reels</h1>
           <div className="mt-2 flex gap-3 text-xs font-bold"><button type="button" onClick={() => setFeedMode('for-you')} className={feedMode === 'for-you' ? 'text-white' : 'text-white/50'}>For you</button><button type="button" onClick={() => setFeedMode('following')} className={feedMode === 'following' ? 'text-white' : 'text-white/50'}>Following</button></div>
         </div>
-        <div className="flex items-center gap-2"><button type="button" onClick={() => void refreshReels()} disabled={isRefreshing} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur disabled:opacity-60" aria-label="Refresh Reels"><RefreshCw className={`size-5 ${isRefreshing ? 'animate-spin' : ''}`} /></button><button type="button" onClick={() => setSearchOpen(true)} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur" aria-label="Search Reels"><Search className="size-5" /></button><Link to="/dashboard/create-reel" className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-[var(--dv-accent)]/30"><Upload className="size-4" /> Create</Link></div>
+        <div className="flex items-center gap-2"><Link to="/dashboard/live" className="grid size-10 place-items-center rounded-full bg-red-600/85 text-white backdrop-blur" aria-label="Open live streams"><Radio className="size-4" /></Link><button type="button" onClick={() => void refreshReels()} disabled={isRefreshing} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur disabled:opacity-60" aria-label="Refresh Reels"><RefreshCw className={`size-5 ${isRefreshing ? 'animate-spin' : ''}`} /></button><button type="button" onClick={() => setSearchOpen(true)} className="grid size-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur" aria-label="Search Reels"><Search className="size-5" /></button><Link to="/dashboard/create-reel" className="inline-flex items-center gap-2 rounded-full bg-[var(--dv-accent)] px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-[var(--dv-accent)]/30"><Upload className="size-4" /> Create</Link></div>
       </header>
       {searchOpen ? <div className="absolute inset-x-3 top-3 z-40 rounded-2xl border border-white/15 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur"><div className="flex items-center gap-2"><Search className="ml-2 size-5 shrink-0 text-slate-400" /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') rememberSearch(); }} placeholder="Search creator, Reel, or #hashtag" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-slate-500" /><button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(''); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-300 hover:bg-white/10" aria-label="Close Reel search"><X className="size-5" /></button></div>{normalizedSearch ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Creator results</p>{creatorSearchResults.length ? creatorSearchResults.map(creator => <button type="button" key={creator.user_id} onClick={() => { rememberSearch(); navigate(`/dashboard/creator/${creator.user_id}`); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-white/10"><span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[var(--dv-accent)]/20 text-xs font-black text-[var(--dv-accent)]">{creator.avatar_url ? <img src={creator.avatar_url} alt="" className="size-full object-cover" /> : (creator.display_name || creator.handle).slice(0, 1).toUpperCase()}</span><span className="min-w-0"><strong className="block truncate text-sm text-white">{creator.display_name || creator.handle}</strong><span className="block truncate text-xs text-[var(--dv-accent)]">@{creator.handle}</span></span></button>) : <p className="px-2 py-2 text-xs text-slate-500">No public creator matches.</p>}</div> : recentSearches.length ? <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-slate-500">Recent searches</p><div className="flex flex-wrap gap-2 px-2 pb-1">{recentSearches.map(term => <button type="button" key={term} onClick={() => setSearchQuery(term)} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/15">{term}</button>)}</div></div> : null}</div> : null}
       <div
