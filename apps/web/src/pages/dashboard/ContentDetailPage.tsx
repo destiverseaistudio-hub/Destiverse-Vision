@@ -11,7 +11,9 @@ import { useEffect } from "react"
 
 import ContentCard from "@/components/content/ContentCard"
 import ContentDetailPlayer from "@/components/content/ContentDetailPlayer"
+import AdSlot from "@/components/ads/AdSlot"
 import { useContentDetail } from "@/hooks/useContentDetail"
+import { usePremiumAccess } from "@/hooks/usePremiumAccess"
 
 export default function ContentDetailPage() {
   const { contentId } = useParams<{ contentId: string }>()
@@ -34,6 +36,7 @@ export default function ContentDetailPage() {
     resetResumePosition,
     playerSectionRef,
   } = useContentDetail(contentId)
+  const { isPremium, loading: premiumLoading } = usePremiumAccess()
 
   const playParam = searchParams.get("play")
   const downloadName = content ? `${content.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "destiverse-video"}.mp4` : "destiverse-video.mp4"
@@ -152,7 +155,8 @@ export default function ContentDetailPage() {
                   {isComingSoon ? "Coming Soon" : "Watch"}
                 </button>
 
-                {content.videoSrc && !isComingSoon ? <a href={downloadUrl} download={downloadName} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/10 sm:mt-0 sm:ml-2 sm:w-auto" title="Download this video to your device"><Download className="h-4 w-4" /> Download</a> : null}
+                {content.videoSrc && !isComingSoon && isPremium ? <a href={downloadUrl} download={downloadName} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/10 sm:mt-0 sm:ml-2 sm:w-auto" title="Download this video to your device"><Download className="h-4 w-4" /> Download</a> : null}
+                {content.videoSrc && !isComingSoon && !premiumLoading && !isPremium ? <Link to="/dashboard/membership" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-amber-300/10 px-5 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/20 sm:mt-0 sm:ml-2 sm:w-auto" title="Premium unlocks direct downloads"><Download className="h-4 w-4" /> Premium downloads</Link> : null}
 
                 <button
                   type="button"
@@ -189,6 +193,8 @@ export default function ContentDetailPage() {
         </div>
       </section>
 
+      <AdSlot placement="content" format="banner" />
+
       {showPlayer ? (
         <ContentDetailPlayer
           content={content}
@@ -201,6 +207,7 @@ export default function ContentDetailPage() {
             persistProgress(0, 0)
             resetResumePosition()
           }}
+          allowDownload={isPremium}
         />
       ) : null}
 

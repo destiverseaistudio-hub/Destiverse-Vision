@@ -37,9 +37,18 @@ Deno.serve(async (request) => {
     const { data: current } = await admin.from("creator_plan_subscriptions").select("expires_at").eq("user_id", order.user_id).maybeSingle()
     if (plan) { const expires = current?.expires_at && new Date(current.expires_at) > new Date() ? new Date(current.expires_at) : new Date(); expires.setUTCDate(expires.getUTCDate() + plan.duration_days); await admin.from("creator_plan_subscriptions").upsert({ user_id: order.user_id, plan_id: plan.id, status: "active", expires_at: expires.toISOString(), updated_at: new Date().toISOString() }); await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Creator Pro is active", message: `${plan.name} is active until ${expires.toLocaleDateString()}.`, action_url: "/dashboard/creator-film-studio" }) }
   } else {
-    const { data: plan } = await admin.from("dv_subscription_plans").select("id,duration_days").eq("id", order.plan_id).single()
+    const { data: plan } = await admin.from("dv_subscription_plans").select("id,name,duration_days,coins_included").eq("id", order.plan_id).single()
     const { data: current } = await admin.from("dv_subscriptions").select("expires_at").eq("user_id", order.user_id).maybeSingle()
-    if (plan) { const expires = current?.expires_at && new Date(current.expires_at) > new Date() ? new Date(current.expires_at) : new Date(); expires.setUTCDate(expires.getUTCDate() + plan.duration_days); await admin.from("dv_subscriptions").upsert({ user_id: order.user_id, plan_id: plan.id, status: "active", expires_at: expires.toISOString(), updated_at: new Date().toISOString() }); await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Premium is active", message: `Your Premium access is active until ${expires.toLocaleDateString()}.`, action_url: "/dashboard/membership" }) }
+    if (plan) {
+      const expires = current?.expires_at && new Date(current.expires_at) > new Date() ? new Date(current.expires_at) : new Date();
+      expires.setUTCDate(expires.getUTCDate() + plan.duration_days);
+      await admin.from("dv_subscriptions").upsert({ user_id: order.user_id, plan_id: plan.id, status: "active", expires_at: expires.toISOString(), updated_at: new Date().toISOString() });
+      if (plan.coins_included && plan.coins_included > 0) {
+        await admin.rpc("credit_payment_coins", { p_user_id: order.user_id, p_amount: plan.coins_included, p_reason: `Plan bonus: ${plan.name}`, p_provider_reference: order.reference });
+      }
+      const coinBonusNotice = plan.coins_included && plan.coins_included > 0 ? ` plus ${plan.coins_included} bonus Coins added to your wallet` : "";
+      await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Premium is active", message: `${plan.name} is active until ${expires.toLocaleDateString()}${coinBonusNotice}.`, action_url: "/dashboard/membership" });
+    }
   }
   return new Response("ok", { status: 200 })
 })

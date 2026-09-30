@@ -36,14 +36,19 @@ async function fulfill(admin: ReturnType<typeof createClient>, secret: string, r
     await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Creator Pro is active", message: `${plan.name} is active until ${base.toLocaleDateString()}.`, action_url: "/dashboard/creator-film-studio" })
     return { paid: true, message: `${plan.name} is active until ${base.toLocaleDateString()}.` }
   }
-  const { data: plan } = await admin.from("dv_subscription_plans").select("id,name,duration_days").eq("id", order.plan_id).maybeSingle()
+  const { data: plan } = await admin.from("dv_subscription_plans").select("id,name,duration_days,coins_included").eq("id", order.plan_id).maybeSingle()
   if (!plan) return { error: "Membership plan was unavailable during fulfillment", status: 500 }
   const { data: current } = await admin.from("dv_subscriptions").select("expires_at").eq("user_id", order.user_id).maybeSingle()
   const base = current?.expires_at && new Date(current.expires_at) > new Date() ? new Date(current.expires_at) : new Date()
   base.setUTCDate(base.getUTCDate() + plan.duration_days)
   await admin.from("dv_subscriptions").upsert({ user_id: order.user_id, plan_id: plan.id, status: "active", expires_at: base.toISOString(), updated_at: new Date().toISOString() })
-  await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Premium is active", message: `${plan.name} is active until ${base.toLocaleDateString()}.`, action_url: "/dashboard/membership" })
-  return { paid: true, message: `${plan.name} is active until ${base.toLocaleDateString()}.` }
+  if (plan.coins_included && plan.coins_included > 0) {
+    const { error } = await admin.rpc("credit_payment_coins", { p_user_id: order.user_id, p_amount: plan.coins_included, p_reason: `Plan bonus: ${plan.name}`, p_provider_reference: reference })
+    if (error) return { error: "Could not credit the included Coins", status: 500 }
+  }
+  const coinBonusNotice = plan.coins_included && plan.coins_included > 0 ? ` plus ${plan.coins_included} bonus Coins added to your wallet` : ""
+  await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Premium is active", message: `${plan.name} is active until ${base.toLocaleDateString()}${coinBonusNotice}.`, action_url: "/dashboard/membership" })
+  return { paid: true, message: `${plan.name} is active until ${base.toLocaleDateString()}${coinBonusNotice}.` }
 }
 
 Deno.serve(async (request) => {

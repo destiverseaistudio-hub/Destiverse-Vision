@@ -2,6 +2,7 @@
 
 import ContentCard from "@/components/content/ContentCard"
 import ContentRow from "@/components/content/ContentRow"
+import AdSlot from "@/components/ads/AdSlot"
 import { useContent } from "@/contexts/ContentContext"
 
 type CategoryName =
@@ -154,6 +155,8 @@ export default function CategoriesPage() {
           </p>
         </div>
       </section>
+
+      <AdSlot placement="content" format="banner" />
 
       <section aria-labelledby="category-filter-heading">
         <div className="mb-4">

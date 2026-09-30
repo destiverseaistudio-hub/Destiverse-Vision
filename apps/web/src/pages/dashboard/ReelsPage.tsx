@@ -22,8 +22,10 @@ import {
   Volume2,
   VolumeX,
   X,
+  Crown,
+  ExternalLink,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -155,7 +157,9 @@ export default function ReelsPage() {
     }
   });
   const [creatorSearchResults, setCreatorSearchResults] = useState<CreatorSearchResult[]>([]);
-  const [reelAd, setReelAd] = useState<AdCampaign | null>(null);
+  const [reelAds, setReelAds] = useState<AdCampaign[]>([]);
+  const [adFree, setAdFree] = useState(false);
+  const [adImpressionsRecorded, setAdImpressionsRecorded] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const normalizedSearch = searchQuery.trim().toLowerCase().replace(/^@/, '');
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
@@ -247,7 +251,22 @@ export default function ReelsPage() {
       void supabase.removeChannel(channel);
     };
   }, []);
-  useEffect(() => { let active = true; void (async () => { const ads = await getAdCampaigns('reels', 'reel_ad', await viewerHasAdFreeAccess()); if (active && ads[0]) setReelAd(ads[0]) })(); return () => { active = false } }, []);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const hasAdFree = await viewerHasAdFreeAccess();
+      if (!active) return;
+      setAdFree(hasAdFree);
+      if (hasAdFree) return;
+      const ads = await getAdCampaigns('reels', 'reel_ad', false);
+      if (active && ads.length > 0) {
+        setReelAds(ads);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     if (!session) return;
     void supabase
@@ -385,7 +404,21 @@ export default function ReelsPage() {
     return score(right) - score(left);
   });
   const feed = normalizedSearch ? matchedReels : focusedFeed;
-  const feedWithAds: Array<Reel | { ad: AdCampaign; id: string }> = reelAd && !normalizedSearch ? feed.flatMap((reel, index) => (index > 0 && index % reelAd.reel_interval === 0 ? [reel, { id: `ad-${reelAd.id}-${index}`, ad: reelAd }] : [reel])) : feed;
+  const feedWithAds = useMemo<Array<Reel | { isAd: true; id: string; ad: AdCampaign }>>(() => {
+    if (normalizedSearch || adFree || !reelAds.length || !feed.length) return feed;
+    const interval = Math.max(3, reelAds[0]?.reel_interval ?? 10);
+    const result: Array<Reel | { isAd: true; id: string; ad: AdCampaign }> = [];
+    let adPointer = 0;
+    feed.forEach((reel, index) => {
+      result.push(reel);
+      if ((index + 1) % interval === 0) {
+        const chosenAd = reelAds[adPointer % reelAds.length];
+        result.push({ isAd: true, id: `ad-${chosenAd.id}-${index}`, ad: chosenAd });
+        adPointer += 1;
+      }
+    });
+    return result;
+  }, [feed, normalizedSearch, adFree, reelAds]);
   const commentReelId = commentReel?.id;
   useEffect(() => {
     if (!commentReelId) return;
@@ -612,6 +645,14 @@ export default function ReelsPage() {
       }
     });
     setActiveReelId((current) => current === reelId ? current : reelId);
+    if (reelId.startsWith('ad-')) {
+      const match = feedWithAds.find((item) => 'isAd' in item && item.id === reelId) as { isAd: true; id: string; ad: AdCampaign } | undefined;
+      if (match && !adImpressionsRecorded[reelId]) {
+        setAdImpressionsRecorded((prev) => ({ ...prev, [reelId]: true }));
+        rememberAdImpression(match.ad);
+        void recordAdEvent(match.ad.id, 'impression');
+      }
+    }
   };
   const refreshReels = async () => {
     if (isRefreshing) return;
@@ -628,7 +669,7 @@ export default function ReelsPage() {
     if (reelId === activeReelId) void video.play().catch(() => undefined);
   };
   useEffect(() => {
-    if (!feedRef.current || !feed.length) return;
+    if (!feedRef.current || !feedWithAds.length) return;
     const container = feedRef.current;
     const nodes = Array.from(container.querySelectorAll<HTMLElement>('[data-reel-id]'));
     if (!nodes.length) return;
@@ -646,24 +687,24 @@ export default function ReelsPage() {
     );
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
-  }, [feed]);
+  }, [feedWithAds]);
   useEffect(() => {
-    if (!feed.length) return;
+    if (!feedWithAds.length) return;
     if (!activeReelId) {
-      const firstPlayable = feed.find((reel) => !reel.demo);
+      const firstPlayable = feedWithAds.find((item) => !('isAd' in item) && !item.demo);
       if (firstPlayable) activateReel(firstPlayable.id);
       return;
     }
-    const videoIds = new Set(feed.map((reel) => reel.id));
+    const videoIds = new Set(feedWithAds.map((item) => item.id));
     Object.keys(videoRefs.current).forEach((id) => {
       if (!videoIds.has(id)) delete videoRefs.current[id];
     });
-    feed.forEach((reel) => {
+    feedWithAds.forEach((reel) => {
       const video = videoRefs.current[reel.id];
       if (!video) return;
       const isCurrent = reel.id === activeReelId;
       const shouldPlay = isCurrent && (reelPlayback[reel.id] ?? true);
-      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? false);
+      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? ('isAd' in reel));
       video.muted = muted;
       if (shouldPlay) {
         void video.play().catch(() => {
@@ -685,7 +726,7 @@ export default function ReelsPage() {
         video.currentTime = 0;
       }
     });
-  }, [feed, activeReelId, reelPlayback, videoMutedByReel, reelLoading]);
+  }, [feedWithAds, activeReelId, reelPlayback, videoMutedByReel, reelLoading]);
   const beginPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
     if (feedRef.current?.scrollTop === 0) refreshTouchStart.current = event.touches[0]?.clientY ?? null;
   };
@@ -728,7 +769,90 @@ export default function ReelsPage() {
         className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
-        {feedWithAds.map((entry) => "ad" in entry ? <article key={entry.id} data-reel-id={entry.id} className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#19030b] via-[#120c24] to-black p-7"><div className="absolute inset-0 opacity-25" style={entry.ad.media_url ? { backgroundImage: `url(${entry.ad.media_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="relative w-full max-w-sm rounded-[2rem] border border-white/15 bg-black/55 p-6 text-center backdrop-blur-xl"><p className="text-[10px] font-black uppercase tracking-[.24em] text-white/55">Sponsored discovery</p>{entry.ad.video_url ? <video src={entry.ad.video_url} controls playsInline muted className="mt-4 aspect-[9/13] w-full rounded-2xl bg-black object-cover" onPlay={() => { rememberAdImpression(entry.ad); void recordAdEvent(entry.ad.id, 'impression') }} /> : null}<h2 className="mt-5 text-2xl font-black text-white">{entry.ad.headline}</h2><p className="mt-2 text-sm leading-6 text-white/75">{entry.ad.body}</p>{entry.ad.cta_url ? <a href={entry.ad.cta_url} target="_blank" rel="noreferrer" onClick={() => void recordAdEvent(entry.ad.id, 'click')} className="mt-5 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-black">{entry.ad.cta_label}</a> : null}<p className="mt-5 text-[10px] text-white/45">Your next Reel is one swipe away.</p></div></article> : (() => { const reel = entry; return (
+        {feedWithAds.map((entry) => "ad" in entry ? (
+          <article
+            key={entry.id}
+            data-reel-id={entry.id}
+            className="relative grid h-full min-h-full snap-start snap-always place-items-center overflow-hidden bg-gradient-to-br from-[#120618] via-[#0d0714] to-black p-4 sm:p-7 select-none"
+          >
+            {entry.ad.media_url ? (
+              <div
+                className="absolute inset-0 bg-cover bg-center opacity-30 blur-[2px]"
+                style={{ backgroundImage: `url(${entry.ad.media_url})` }}
+              />
+            ) : null}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-black/90 pointer-events-none" />
+
+            <div className="relative z-10 w-full max-w-sm rounded-[2.2rem] border border-white/15 bg-black/65 p-6 sm:p-7 text-center backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]">
+              <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-[.24em] text-[var(--dv-accent)]">
+                <Sparkles className="size-3" /> Sponsored Discovery
+              </div>
+
+              {entry.ad.video_url ? (
+                <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black aspect-[9/13] max-h-[300px] mx-auto shadow-inner">
+                  <video
+                    ref={(node) => {
+                      if (node) videoRefs.current[entry.id] = node;
+                      else delete videoRefs.current[entry.id];
+                    }}
+                    src={entry.ad.video_url}
+                    playsInline
+                    loop
+                    muted={videoMutedByReel[entry.id] ?? false}
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVideoMutedByReel((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }));
+                    }}
+                    className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80"
+                    aria-label="Toggle ad volume"
+                  >
+                    {videoMutedByReel[entry.id] ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                  </button>
+                </div>
+              ) : entry.ad.media_url ? (
+                <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/10 aspect-[16/10] mx-auto shadow-md">
+                  <img src={entry.ad.media_url} alt="" className="size-full object-cover" />
+                </div>
+              ) : null}
+
+              <h2 className="mt-4 text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
+                {entry.ad.headline}
+              </h2>
+              {entry.ad.body ? (
+                <p className="mt-2 line-clamp-3 text-xs sm:text-sm leading-relaxed text-white/75">
+                  {entry.ad.body}
+                </p>
+              ) : null}
+
+              {entry.ad.cta_url ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void recordAdEvent(entry.ad.id, 'click');
+                    if (entry.ad.cta_url) window.open(entry.ad.cta_url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:bg-white/90 active:scale-[0.98]"
+                >
+                  {entry.ad.cta_label || 'Learn more'}
+                  <ExternalLink className="size-3.5" />
+                </button>
+              ) : null}
+
+              <div className="mt-5 border-t border-white/10 pt-3">
+                <Link
+                  to="/dashboard/membership"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/50 hover:text-white transition"
+                >
+                  <Crown className="size-3 text-amber-300" /> Remove ads for 24h with 30 Coins or Vision Plus
+                </Link>
+              </div>
+            </div>
+          </article>
+        ) : (() => { const reel = entry; return (
           <article key={reel.id} data-reel-id={reel.id} tabIndex={0} onKeyDown={(event) => { if (!reel.demo && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCenterTap(reel); } }} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 outline-none focus-visible:ring-2 focus-visible:ring-[var(--dv-accent)] touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
