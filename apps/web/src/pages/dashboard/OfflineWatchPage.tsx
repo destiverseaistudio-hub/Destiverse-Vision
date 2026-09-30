@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 
 import { useContent } from "@/contexts/ContentContext"
 import { usePremiumAccess } from "@/hooks/usePremiumAccess"
+import { resolveMediaSource } from "@/services/mediaSource"
 import { supabase } from "@/lib/supabase"
 import { copyOfflineDownloadToGoogleDrive, downloadForOffline, getOfflineRecords, getOfflineVideoUrl, isItemDownloaded, removeOfflineDownload, requestDeviceStoragePermission, type OfflineRecord } from "@/services/offline"
 
@@ -25,7 +26,7 @@ export default function OfflineWatchPage() {
   const { isPremium, loading: premiumLoading } = usePremiumAccess()
   const freeOfflineLimit = 2
   const refresh = () => setRecords(getOfflineRecords())
-  const mainVideos: DownloadItem[] = content.filter((item) => item.videoSrc).map((item) => ({ id: `content:${item.id}`, title: item.title, source: item.videoSrc!, kind: "Video" }))
+  const mainVideos: DownloadItem[] = content.filter((item) => resolveMediaSource(item.videoSrc)?.kind === "direct").map((item) => ({ id: `content:${item.id}`, title: item.title, source: item.videoSrc!, kind: "Video" }))
 
   useEffect(() => {
     void navigator.storage?.estimate?.().then((value) => setEstimate(value))
