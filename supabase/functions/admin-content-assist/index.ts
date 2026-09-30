@@ -6,7 +6,7 @@ const corsHeaders = {
 }
 
 type AssistRequest = {
-  mode?: "content" | "release" | "notification" | "feature_flag" | "support_reply" | "site_setting" | "site_setting_ideas"
+  mode?: "content" | "release" | "notification" | "feature_flag" | "support_reply" | "site_setting" | "site_setting_ideas" | "ad_campaign" | "reel_moderation"
   title: string
   description?: string
   version?: string
@@ -181,6 +181,8 @@ Deno.serve(async (request) => {
   const isSupportRequest = input.mode === "support_reply"
   const isSiteSettingRequest = input.mode === "site_setting"
   const isSiteSettingIdeasRequest = input.mode === "site_setting_ideas"
+  const isAdCampaignRequest = input.mode === "ad_campaign"
+  const isReelModerationRequest = input.mode === "reel_moderation"
   const prompt = isSiteSettingIdeasRequest
     ? `You are the product communications strategist for DestiVerse Vision.
 ${platformContext}
@@ -210,6 +212,10 @@ Write clear, accurate app-update messaging from only the information supplied. D
 Update title: ${input.title}
 Version: ${input.version || "not supplied"}
 Admin notes: ${input.description || "not supplied"}`
+    : isAdCampaignRequest
+    ? `You are the advertising copy editor for DestiVerse Vision. Return JSON only with exactly these keys: name, headline, body, cta_label. Turn the administrator's notes into concise, truthful campaign copy. Do not invent prices, discounts, partnerships, performance claims, or eligibility. headline must be under 140 characters, body under 500 characters, and cta_label 2-40 characters. The admin must review media and destination before publishing.\n\nCampaign idea: ${input.title}\nNotes: ${input.description || "not supplied"}\nFormat: ${input.currentType || "not supplied"}\nPlacement: ${input.currentCategory || "not supplied"}`
+    : isReelModerationRequest
+    ? `You are a careful DestiVerse Vision moderation assistant. Return JSON only with exactly this key: moderation_note. Draft a neutral, concise internal review note from only the title, caption, and existing context supplied. Do not claim you watched the Reel, do not determine a violation, and do not make a final moderation decision. Ask the administrator to review the actual video before approving or rejecting.\n\nTitle: ${input.title}\nContext: ${input.description || "not supplied"}`
     : `You are the senior metadata editor for DestiVerse Vision, a streaming platform.
 Return JSON only with exactly these keys: id, description, meta, type, category, badge, confidence, warnings.
 id must be a lowercase URL-safe slug based on the title. description must be 3-4 polished sentences and at least 220 characters. meta must be a short truthful label. type must be exactly one of: ${allowedTypes.join(", ")}. category must be exactly one of: ${allowedCategories.join(", ")}. badge must be exactly one of: ${allowedBadges.map((badge) => badge || "empty string").join(", ")}. confidence must be high, medium, or low. warnings must be an array of short strings.
@@ -242,6 +248,10 @@ const responseSchema = isSiteSettingIdeasRequest
         announcement: { type: "STRING" },
       },
     }
+  : isAdCampaignRequest
+  ? { type: "OBJECT", required: ["name", "headline", "body", "cta_label"], properties: { name: { type: "STRING" }, headline: { type: "STRING" }, body: { type: "STRING" }, cta_label: { type: "STRING" } } }
+  : isReelModerationRequest
+  ? { type: "OBJECT", required: ["moderation_note"], properties: { moderation_note: { type: "STRING" } } }
   : {
       type: "OBJECT",
       required: ["id", "description", "meta", "type", "category", "badge", "confidence", "warnings"],
@@ -284,7 +294,7 @@ let aiResponse: Response | undefined
       if (providerBody) providerMessage = providerBody.slice(0, 240)
     }
     if (aiResponse.status === 429 || aiResponse.status === 503) {
-      return response(isReleaseRequest ? fallbackRelease(input) : isNotificationRequest ? normalizeNotification(input, {}) : isSiteSettingIdeasRequest ? { suggestions: [`Welcome viewers with a clear ${input.title.toLowerCase()} message.`, `Explain what viewers can expect and where to get help.`, `Keep the tone concise, friendly, and specific to DestiVerse Vision.`], source: "fallback" } : isSiteSettingRequest ? { content: input.description?.trim() || input.title.trim(), source: "fallback" } : fallbackSuggestions(input))
+      return response(isReleaseRequest ? fallbackRelease(input) : isNotificationRequest ? normalizeNotification(input, {}) : isAdCampaignRequest ? { name: input.title.trim(), headline: input.title.trim(), body: input.description?.trim() || "Review campaign details before publishing.", cta_label: "Learn more", source: "fallback" } : isReelModerationRequest ? { moderation_note: "Review the actual Reel, title, caption, and applicable policy before making a moderation decision.", source: "fallback" } : isSiteSettingIdeasRequest ? { suggestions: [`Welcome viewers with a clear ${input.title.toLowerCase()} message.`, `Explain what viewers can expect and where to get help.`, `Keep the tone concise, friendly, and specific to DestiVerse Vision.`], source: "fallback" } : isSiteSettingRequest ? { content: input.description?.trim() || input.title.trim(), source: "fallback" } : fallbackSuggestions(input))
     }
     return response({ error: `Gemini ${aiResponse.status}: ${providerMessage}` }, 502)
   }
@@ -294,7 +304,7 @@ let aiResponse: Response | undefined
     const content = result.candidates?.[0]?.content?.parts?.[0]?.text
     const parsed = JSON.parse(content ?? "{}")
     return response({
-      ...(isSiteSettingIdeasRequest ? { suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((idea): idea is string => typeof idea === "string" && idea.trim()).map((idea) => idea.trim()).slice(0, 3) : [] } : isSiteSettingRequest ? { content: typeof parsed.content === "string" && parsed.content.trim() ? parsed.content.trim().slice(0, 5000) : input.description?.trim() || input.title.trim() } : isFlagRequest ? { key: slugify(typeof parsed.key === "string" ? parsed.key : input.title).replace(/-/g, "_"), name: typeof parsed.name === "string" ? parsed.name.slice(0, 100) : input.title, description: typeof parsed.description === "string" ? parsed.description.slice(0, 300) : input.description || "", audience: ["all", "testers", "admins"].includes(parsed.audience) ? parsed.audience : "testers" } : isSupportRequest ? { reply: typeof parsed.reply === "string" ? parsed.reply.slice(0, 600) : "Thank you for letting us know. Our team is reviewing your report." } : isNotificationRequest ? normalizeNotification(input, parsed) : isReleaseRequest ? normalizeRelease(input, parsed) : normalizeSuggestions(input, parsed)),
+      ...(isSiteSettingIdeasRequest ? { suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((idea): idea is string => typeof idea === "string" && idea.trim()).map((idea) => idea.trim()).slice(0, 3) : [] } : isSiteSettingRequest ? { content: typeof parsed.content === "string" && parsed.content.trim() ? parsed.content.trim().slice(0, 5000) : input.description?.trim() || input.title.trim() } : isFlagRequest ? { key: slugify(typeof parsed.key === "string" ? parsed.key : input.title).replace(/-/g, "_"), name: typeof parsed.name === "string" ? parsed.name.slice(0, 100) : input.title, description: typeof parsed.description === "string" ? parsed.description.slice(0, 300) : input.description || "", audience: ["all", "testers", "admins"].includes(parsed.audience) ? parsed.audience : "testers" } : isSupportRequest ? { reply: typeof parsed.reply === "string" ? parsed.reply.slice(0, 600) : "Thank you for letting us know. Our team is reviewing your report." } : isNotificationRequest ? normalizeNotification(input, parsed) : isReleaseRequest ? normalizeRelease(input, parsed) : isAdCampaignRequest ? { name: typeof parsed.name === "string" ? parsed.name.trim().slice(0, 120) : input.title.trim(), headline: typeof parsed.headline === "string" ? parsed.headline.trim().slice(0, 140) : input.title.trim(), body: typeof parsed.body === "string" ? parsed.body.trim().slice(0, 500) : input.description || "", cta_label: typeof parsed.cta_label === "string" ? parsed.cta_label.trim().slice(0, 40) : "Learn more" } : isReelModerationRequest ? { moderation_note: typeof parsed.moderation_note === "string" ? parsed.moderation_note.trim().slice(0, 600) : "Review the actual Reel before making a moderation decision." } : normalizeSuggestions(input, parsed)),
       source: "gemini",
     })
   } catch {
