@@ -5,6 +5,10 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const allowedTypes = new Set(["video/mp4", "video/webm", "video/quicktime"])
 const maximumUploadBytes = 100 * 1024 * 1024
 
+function isAllowedVideo(fileName: string, contentType: string) {
+  return allowedTypes.has(contentType) || (!contentType && /\.(mp4|webm|mov)$/i.test(fileName))
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors })
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405)
@@ -15,7 +19,7 @@ Deno.serve(async (request) => {
   if (identityError || !identity.user) return json({ error: "Please sign in before uploading." }, 401)
   let input: { file_name?: string; file_size?: number; content_type?: string; max_duration_seconds?: number; purpose?: "reel" | "catalog" }
   try { input = await request.json() } catch { return json({ error: "Invalid upload request." }, 400) }
-  if (!input.file_name?.trim() || !input.file_size || !input.content_type || !allowedTypes.has(input.content_type)) return json({ error: "Choose an MP4, WebM, or MOV video file." }, 400)
+  if (!input.file_name?.trim() || !input.file_size || !isAllowedVideo(input.file_name, input.content_type || "")) return json({ error: "Choose an MP4, WebM, or MOV video file." }, 400)
   if (input.file_size > maximumUploadBytes) return json({ error: "Choose a video smaller than 100 MB." }, 400)
   const [{ data: application }, { data: entitlement }] = await Promise.all([
     supabase.from("creator_applications").select("status").eq("user_id", identity.user.id).maybeSingle(),
@@ -31,6 +35,10 @@ Deno.serve(async (request) => {
     body: JSON.stringify({ maxDurationSeconds: duration, creator: identity.user.id, requireSignedURLs: !isReel, expiry: new Date(Date.now() + 60 * 60 * 1000).toISOString(), meta: { source: isReel ? "destiverse-reel" : "destiverse-creator-film", filename: input.file_name.slice(0, 180) } }),
   })
   const payload = await cloudflare.json().catch(() => null)
-  if (!cloudflare.ok || !payload?.success || !payload?.result?.uploadURL || !payload?.result?.uid) return json({ error: payload?.errors?.[0]?.message || "Cloudflare could not prepare this upload." }, 502)
+  if (!cloudflare.ok || !payload?.success || !payload?.result?.uploadURL || !payload?.result?.uid) {
+    const providerError = payload?.errors?.[0]?.message || payload?.messages?.[0]?.message || "Cloudflare could not prepare this upload."
+    console.error(JSON.stringify({ event: "cloudflare_direct_upload_failed", status: cloudflare.status, error: providerError }))
+    return json({ error: `Cloudflare Stream (${cloudflare.status}): ${providerError}`, provider_status: cloudflare.status }, 502)
+  }
   return json({ upload_url: payload.result.uploadURL, stream_uid: payload.result.uid, playback_url: `https://videodelivery.net/${payload.result.uid}/manifest/video.m3u8`, thumbnail_url: `https://videodelivery.net/${payload.result.uid}/thumbnails/thumbnail.jpg` })
 })

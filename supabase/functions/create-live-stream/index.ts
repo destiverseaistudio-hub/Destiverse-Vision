@@ -40,5 +40,5 @@ Deno.serve(async (request) => {
   }
   const { data: stream, error } = await supabase.from("creator_live_streams").insert({ creator_id: identity.user.id, title, description, provider, stream_uid: uid, playback_url: playbackUrl, thumbnail_url: thumbnailUrl }).select("id,title,stream_uid,playback_url,provider").single()
   if (error) return json({ error: error.message }, 500)
-  return json({ stream, provider, rtmps_url: rtmpsUrl, stream_key: streamKey, srt_url: srtUrl })
+  return json({ stream, provider, ingest_url: rtmpsUrl, stream_key: streamKey, srt_url: srtUrl })
 })

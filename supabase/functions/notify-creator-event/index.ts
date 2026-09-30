@@ -12,9 +12,36 @@ Deno.serve(async (request) => {
   const caller = createClient(url, anon, { global: { headers: { Authorization: authorization } } })
   const { data: identity } = await caller.auth.getUser()
   if (!identity.user) return json({ error: "Authentication required" }, 401)
-  let input: { type?: "like" | "follow"; reel_id?: string; creator_id?: string }
+  let input: { type?: "like" | "follow" | "new_reel"; reel_id?: string; creator_id?: string }
   try { input = await request.json() } catch { return json({ error: "Invalid payload" }, 400) }
   const admin = createClient(url, service)
+  if (input.type === "new_reel" && input.reel_id) {
+    const { data: isAdmin } = await caller.rpc("is_admin")
+    if (isAdmin !== true) return json({ error: "Only administrators can announce a newly approved Reel." }, 403)
+    const { data: reel } = await admin.from("reel_submissions").select("id,creator_id,title,status").eq("id", input.reel_id).maybeSingle()
+    if (!reel || reel.status !== "approved") return json({ skipped: true })
+    const { data: follows } = await admin.from("reel_creator_follows").select("follower_id").eq("creator_id", reel.creator_id)
+    const recipientIds = [...new Set((follows ?? []).map((follow) => follow.follower_id).filter((userId) => userId !== reel.creator_id))]
+    if (!recipientIds.length) return json({ delivered: 0 })
+    const { data: preferences } = await admin.from("user_preferences").select("user_id,notifications_enabled,push_new_reels").in("user_id", recipientIds)
+    const enabledIds = new Set((preferences ?? []).filter((preference) => preference.notifications_enabled !== false && preference.push_new_reels !== false).map((preference) => preference.user_id))
+    if (!enabledIds.size) return json({ delivered: 0 })
+    const { data: subscriptions } = await admin.from("push_subscriptions").select("endpoint,p256dh,auth,user_id").in("user_id", [...enabledIds]).eq("active", true)
+    webpush.setVapidDetails(subject, publicKey, privateKey)
+    const title = "New Reel from a creator you follow"
+    const body = `${reel.title} is now available to watch.`
+    let delivered = 0
+    await Promise.all((subscriptions ?? []).map(async (subscription) => {
+      try {
+        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title, body, url: "/dashboard/reels" }), { TTL: 60 * 60 * 12 })
+        delivered += 1
+      } catch (error) {
+        const status = error && typeof error === "object" && "statusCode" in error ? Number(error.statusCode) : 0
+        if (status === 404 || status === 410) await admin.from("push_subscriptions").update({ active: false }).eq("endpoint", subscription.endpoint)
+      }
+    }))
+    return json({ delivered })
+  }
   let recipient = "", preference = "", title = "", body = "", actionUrl = "/dashboard/notifications"
   if (input.type === "like" && input.reel_id) {
     const [{ data: reaction }, { data: reel }] = await Promise.all([admin.from("reel_reactions").select("reel_id").eq("reel_id", input.reel_id).eq("user_id", identity.user.id).eq("reaction", "love").maybeSingle(), admin.from("reel_submissions").select("creator_id,title").eq("id", input.reel_id).maybeSingle()])

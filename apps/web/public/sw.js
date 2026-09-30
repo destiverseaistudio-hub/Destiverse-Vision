@@ -11,7 +11,14 @@ self.addEventListener("fetch", (event) => {
   }).catch(() => caches.match(event.request)))
 })
 self.addEventListener("push", (event) => {
-  const payload = event.data?.json?.() || {}
-  event.waitUntil(self.registration.showNotification(payload.title || "DestiVerse Vision Update", { body: payload.body || "New fixes and improvements are available. Tap to update the app.", icon: "/brand/destiverse-vision-logo.png", data: { url: payload.url || "/dashboard" } }))
+  let payload = {}
+  try { payload = event.data?.json?.() || {} } catch { /* A malformed push must not prevent notification delivery. */ }
+  event.waitUntil(self.registration.showNotification(payload.title || "DestiVerse Vision", {
+    body: payload.body || "You have a new DestiVerse notification.",
+    icon: "/brand/destiverse-vision-logo.png",
+    badge: "/brand/destiverse-vision-logo.png",
+    tag: payload.tag || "destiverse-notification",
+    data: { url: payload.url || "/dashboard/notifications" },
+  }))
 })
 self.addEventListener("notificationclick", (event) => { event.notification.close(); event.waitUntil(self.clients.openWindow(event.notification.data?.url || "/dashboard")) })
