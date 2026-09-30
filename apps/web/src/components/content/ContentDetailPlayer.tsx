@@ -76,9 +76,9 @@ export default function ContentDetailPlayer({
   return (
     <section
       ref={sectionRef}
-      className="mx-auto w-full min-w-0 max-w-[var(--dv-content-max-width)] scroll-mt-20 px-3 pt-7 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10"
+      className="mx-auto w-full min-w-0 max-w-[var(--dv-content-max-width)] scroll-mt-20 px-3 pt-7 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10 [@media(orientation:landscape)_and_(max-height:600px)]:px-2 [@media(orientation:landscape)_and_(max-height:600px)]:pt-3"
     >
-      <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
+      <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-4 [@media(orientation:landscape)_and_(max-height:600px)]:mb-2 [@media(orientation:landscape)_and_(max-height:600px)]:gap-2">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
             Now playing

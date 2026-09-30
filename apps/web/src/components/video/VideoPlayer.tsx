@@ -417,7 +417,10 @@ export default function VideoPlayer({
           onClick={handleStageClick}
           style={!focusMode ? isPortraitVideo
             ? { width: "min(100%, 42.5dvh)", aspectRatio: "9 / 14" }
-            : { width: "min(100%, 106.67dvh)", aspectRatio: "16 / 9" }
+            // In mobile landscape, the old 106.67dvh cap made a wide video
+            // unnecessarily short. This retains a compact player while using
+            // a little more of the available screen height.
+            : { width: "min(100%, 124dvh)", aspectRatio: "16 / 9" }
             : undefined}
           className={`relative min-w-0 max-w-full overflow-hidden bg-black fullscreen:aspect-video ${focusMode ? "mx-auto w-full max-w-[min(100%,1600px)] rounded-none sm:rounded-2xl shadow-[0_0_100px_rgba(229,9,20,.12)]" : "mx-auto"}`}
         >
@@ -510,7 +513,7 @@ export default function VideoPlayer({
             }`}
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3 transition-opacity sm:p-5">
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3 transition-opacity sm:p-5 [@media(orientation:landscape)_and_(max-height:600px)]:p-2">
             <span className={`rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[.18em] text-white/70 backdrop-blur-md transition-opacity ${showControls ? "opacity-100" : "opacity-0"}`}>DestiVerse Cinema {mediaQuality ? `· ${mediaQuality}` : ""}</span>
             <button type="button" onClick={() => setShowShortcutGuide((visible) => !visible)} className={`pointer-events-auto rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[10px] font-semibold text-white/70 backdrop-blur-md transition hover:bg-black/70 hover:text-white ${showControls ? "opacity-100" : "opacity-0"}`} aria-label="Show keyboard shortcuts">?</button>
           </div>
@@ -564,7 +567,7 @@ export default function VideoPlayer({
           ) : null}
 
           {!hasError ? (
-            <div className={`absolute inset-x-0 bottom-0 px-3 pb-2 pt-8 transition-opacity duration-200 sm:px-5 sm:pb-4 ${showControls ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}>
+            <div className={`absolute inset-x-0 bottom-0 px-3 pb-2 pt-8 transition-opacity duration-200 sm:px-5 sm:pb-4 [@media(orientation:landscape)_and_(max-height:600px)]:px-2 [@media(orientation:landscape)_and_(max-height:600px)]:pb-1 [@media(orientation:landscape)_and_(max-height:600px)]:pt-5 ${showControls ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}>
               <div className="mb-2 min-w-0">
                 <p className="truncate text-xs font-semibold text-white sm:text-sm">
                   {title}
