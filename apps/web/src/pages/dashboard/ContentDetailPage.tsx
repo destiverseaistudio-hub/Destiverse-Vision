@@ -12,6 +12,7 @@ import { useEffect } from "react"
 import ContentCard from "@/components/content/ContentCard"
 import ContentDetailPlayer from "@/components/content/ContentDetailPlayer"
 import AdSlot from "@/components/ads/AdSlot"
+import GoogleAdSlot from "@/components/ads/GoogleAdSlot"
 import { useContentDetail } from "@/hooks/useContentDetail"
 import { usePremiumAccess } from "@/hooks/usePremiumAccess"
 import { resolveMediaSource } from "@/services/mediaSource"
@@ -196,6 +197,7 @@ export default function ContentDetailPage() {
       </section>
 
       <AdSlot placement="content" format="banner" />
+      <GoogleAdSlot placement="content" />
 
       {showPlayer ? (
         <ContentDetailPlayer

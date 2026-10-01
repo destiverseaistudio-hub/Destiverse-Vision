@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import ContentRow from '@/components/content/ContentRow';
 import { getWatchProgress } from '@/services/library';
 import AdSlot from '@/components/ads/AdSlot';
+import GoogleAdSlot from '@/components/ads/GoogleAdSlot';
 
 export default function DashboardHome() {
   const { featured, rows, settings } = useContent();
@@ -22,6 +23,7 @@ export default function DashboardHome() {
       <DashboardHero featured={featured} heroTitle={heroTitle} heroDescription={heroDescription} />
       <AdSlot placement="home" format="ribbon" />
       <AdSlot placement="home" format="banner" />
+      <GoogleAdSlot placement="home" />
       <AdSlot placement="home" format="popup" />
 
       {settings.announcement ? (

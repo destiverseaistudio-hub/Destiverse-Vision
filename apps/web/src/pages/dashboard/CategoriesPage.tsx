@@ -3,6 +3,7 @@
 import ContentCard from "@/components/content/ContentCard"
 import ContentRow from "@/components/content/ContentRow"
 import AdSlot from "@/components/ads/AdSlot"
+import GoogleAdSlot from "@/components/ads/GoogleAdSlot"
 import { useContent } from "@/contexts/ContentContext"
 
 type CategoryName =
@@ -157,6 +158,7 @@ export default function CategoriesPage() {
       </section>
 
       <AdSlot placement="content" format="banner" />
+      <GoogleAdSlot placement="content" />
 
       <section aria-labelledby="category-filter-heading">
         <div className="mb-4">

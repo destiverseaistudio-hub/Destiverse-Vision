@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 
 import ContentCard from "@/components/content/ContentCard"
 import AdSlot from "@/components/ads/AdSlot"
+import GoogleAdSlot from "@/components/ads/GoogleAdSlot"
 import { Input } from "@/components/ui/input"
 import { useContent } from "@/contexts/ContentContext"
 
@@ -82,6 +83,7 @@ export default function SearchPage() {
       </section>
 
       <AdSlot placement="content" format="banner" />
+      <GoogleAdSlot placement="content" />
 
       <section aria-labelledby="search-heading">
         <div className="mb-4">
