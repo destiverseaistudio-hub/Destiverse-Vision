@@ -19,7 +19,7 @@ Deno.serve(async (request) => {
   const { data: isAdmin } = await caller.rpc("is_admin")
   if (isAdmin !== true) return json({ error: "Only administrators can send push notifications." }, 403)
 
-  let input: { title?: string; message?: string; action_url?: string | null; audience?: "all" | "admins" | "testers" }
+  let input: { title?: string; message?: string; action_url?: string | null; audience?: "all" | "admins" | "testers" | "self" }
   try { input = await request.json() } catch { return json({ error: "Invalid notification payload." }, 400) }
   const title = input.title?.trim().slice(0, 120), body = input.message?.trim().slice(0, 600)
   if (!title || !body) return json({ error: "A title and message are required." }, 400)
@@ -39,7 +39,9 @@ Deno.serve(async (request) => {
   // There is no tester membership model yet. Keep both restricted audiences
   // inside the existing administrator boundary rather than leaking a private
   // announcement to every subscribed device.
-  if (input.audience === "admins" || input.audience === "testers") {
+  if (input.audience === "self") {
+    for (const userId of enabled) if (userId !== identity.user.id) enabled.delete(userId)
+  } else if (input.audience === "admins" || input.audience === "testers") {
     const { data: admins, error: adminsError } = await admin.from("user_roles").select("user_id").eq("role", "admin")
     if (adminsError) return json({ error: adminsError.message }, 500)
     const adminIds = new Set((admins ?? []).map((item) => item.user_id))

@@ -13,8 +13,9 @@ export async function enablePushNotifications() {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error("Sign in before enabling notifications.")
   const registration = await navigator.serviceWorker.ready
-  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toUint8Array(publicKey) })
+  const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toUint8Array(publicKey) })
   const json = subscription.toJSON()
+  if (!json.keys?.p256dh || !json.keys.auth) throw new Error("The browser did not return valid push subscription keys.")
   const { error } = await supabase.from("push_subscriptions").upsert({ user_id: auth.user.id, endpoint: subscription.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth, user_agent: navigator.userAgent, active: true }, { onConflict: "endpoint" })
   if (error) throw error
 }

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom"
+import SocialLinks from "@/components/layout/SocialLinks"
 import { ContentProvider, useContent } from "@/contexts/ContentContext"
 
 const pageInfo = {
@@ -10,6 +11,7 @@ const pageInfo = {
 function InfoContent({ page }: { page: keyof typeof pageInfo }) {
   const { settings } = useContent()
   const info = pageInfo[page]
-  return <main className="min-h-screen bg-[var(--dv-background)] px-4 py-10 text-white sm:px-6"><article className="mx-auto max-w-3xl"><Link to="/" className="text-sm text-white/60 hover:text-white">← Back to DestiVerse Vision</Link><p className="mt-10 text-xs font-bold uppercase tracking-[.2em] text-[var(--dv-accent)]">DestiVerse Vision</p><h1 className="mt-3 text-4xl font-black">{info.title}</h1><div className="mt-8 whitespace-pre-wrap text-sm leading-8 text-white/70">{settings[info.key] || info.fallback}</div></article></main>
+  return <main className="min-h-screen bg-[var(--dv-background)] px-4 py-10 text-white sm:px-6"><article className="mx-auto max-w-3xl"><Link to="/" className="text-sm text-white/60 hover:text-white">← Back to DestiVerse Vision</Link><p className="mt-10 text-xs font-bold uppercase tracking-[.2em] text-[var(--dv-accent)]">DestiVerse Vision</p><h1 className="mt-3 text-4xl font-black">{info.title}</h1><div className="mt-8 whitespace-pre-wrap text-sm leading-8 text-white/70">{settings[info.key] || info.fallback}</div><div className="mt-10 border-t border-white/10 pt-6"><p className="mb-3 text-xs font-semibold uppercase tracking-[.16em] text-white/45">Connect with us</p><SocialLinks /></div></article></main>
 }
+
 export default function InfoPage({ page }: { page: keyof typeof pageInfo }) { return <ContentProvider><InfoContent page={page} /></ContentProvider> }
