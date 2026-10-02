@@ -9,6 +9,10 @@ const appDirectory = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   root: appDirectory,
   envDir: path.resolve(appDirectory, "../.."),
+  define: {
+    "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(process.env.VITE_SUPABASE_URL ?? ""),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? ""),
+  },
   plugins: [react(), tailwindcss()],
   server: {
     host: "localhost",

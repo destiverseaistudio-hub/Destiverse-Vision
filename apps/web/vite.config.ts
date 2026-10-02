@@ -16,6 +16,8 @@ export default defineConfig({
   envDir: path.resolve(__dirname, "../.."),
   define: {
     "import.meta.env.VITE_APP_BUILD_ID": JSON.stringify(buildId),
+    "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(process.env.VITE_SUPABASE_URL ?? ""),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? ""),
   },
   plugins: [
     react(),
