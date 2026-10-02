@@ -65,8 +65,11 @@ export default function CreateReelPage() {
     if (audioPath && musicFile) { const { data: track, error } = await supabase.from("reel_music_tracks").insert({ title: musicFile.name.replace(/\.[^/.]+$/, ""), audio_url: audioPath, creator_id: session.user.id }).select("id").single(); if (error || !track) { setMessage(error?.message || "Could not save selected music."); setBusy(false); return }; selectedTrackId = track.id } else if (trackId) selectedMusicPath = tracks.find((track) => track.id === trackId)?.audio_url ?? null
     const { data: reel, error } = await supabase.from("reel_submissions").insert({ creator_id: session.user.id, title: title.trim(), caption: caption.trim(), video_url: mediaPath, poster_url: coverPath, media_type: mediaType, music_url: selectedMusicPath, music_track_id: selectedTrackId, audio_label: musicFile?.name.replace(/\.[^/.]+$/, "") || tracks.find((track) => track.id === trackId)?.title || null, visibility, location_label: place?.label ?? null, location_latitude: place?.latitude ?? null, location_longitude: place?.longitude ?? null, editor_settings: { overlay_text: overlayText, filter, music_volume: musicVolume, original_volume: originalVolume } }).select("id").single()
     if (error || !reel) { setMessage(error?.message || "Could not submit your Reel."); setBusy(false); return }
-    await supabase.functions.invoke("reel-auto-review", { body: { reelId: reel.id } })
-    setBusy(false); setMessage("Submitted for review. An administrator will review it before it appears in the feed."); setCountdown(6); setStage("submitted")
+    const { data: review, error: reviewError } = await supabase.functions.invoke("reel-auto-review", { body: { reelId: reel.id } })
+    const reviewMessage = reviewError
+      ? "Your Reel was submitted safely and is waiting for an administrator review."
+      : review?.notice || "Your Reel was submitted and is being reviewed."
+    setBusy(false); setMessage(reviewMessage); setCountdown(6); setStage("submitted")
   }
 
   if (!session) return null

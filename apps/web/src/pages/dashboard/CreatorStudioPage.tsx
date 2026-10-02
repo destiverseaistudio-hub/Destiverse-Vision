@@ -4,7 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-type Reel = { id: string; title: string; caption: string; status: 'pending' | 'approved' | 'rejected' | 'removed'; moderation_note: string; created_at: string };
+type Reel = { id: string; title: string; caption: string; status: 'pending' | 'approved' | 'rejected' | 'removed'; moderation_note: string; auto_review_status?: string; created_at: string };
 
 export default function CreatorStudioPage() {
   const { session } = useAuth();
@@ -28,10 +28,10 @@ export default function CreatorStudioPage() {
     if (!session?.user?.id) return;
     let active = true;
     const fetchStudio = async () => {
-      const [{ data: application }, { data: reelData }, { count: followerCount }] = await Promise.all([
+      const [{ data: application }, { data: reelData }, { data: followCounts }] = await Promise.all([
         supabase.from('creator_applications').select('status').eq('user_id', session.user.id).maybeSingle(),
-        supabase.from('reel_submissions').select('id,title,caption,status,moderation_note,created_at').eq('creator_id', session.user.id).order('created_at', { ascending: false }),
-        supabase.from('reel_creator_follows').select('follower_id', { count: 'exact', head: true }).eq('creator_id', session.user.id),
+        supabase.from('reel_submissions').select('id,title,caption,status,moderation_note,auto_review_status,created_at').eq('creator_id', session.user.id).order('created_at', { ascending: false }),
+        supabase.rpc('get_creator_profile_follow_counts', { p_creator_id: session.user.id }),
       ]);
       const items = (reelData ?? []) as Reel[];
       const ids = items.map((item) => item.id);
@@ -54,7 +54,7 @@ export default function CreatorStudioPage() {
       setComments(commentCount);
       setApproved(application?.status === 'approved');
       setAccountStatus(application?.status ?? 'missing');
-      setFollowers(followerCount ?? 0);
+      setFollowers(Number(followCounts?.[0]?.followers ?? 0));
       setReels(items);
       setLoading(false);
     };
@@ -62,12 +62,24 @@ export default function CreatorStudioPage() {
     return () => { active = false };
   }, [session?.user?.id, refreshCount]);
 
+  // Gemini can take longer than the upload request to finish video processing.
+  // When the creator returns here, resume that secure check without making them
+  // wait through an arbitrary review timer.
+  useEffect(() => {
+    const processing = reels.filter((reel) => reel.status === 'pending' && reel.auto_review_status === 'processing');
+    if (!processing.length) return;
+    void Promise.all(processing.map((reel) => supabase.functions.invoke('reel-auto-review', { body: { reelId: reel.id } }))).then(refresh);
+  }, [reels]);
+
   if (!session) return <Navigate to="/" replace />;
   if (!loading && !approved) return <Navigate to="/dashboard/creator-onboarding" replace />;
   const savePending = async () => {
     if (!editing) return;
-    const { error } = await supabase.from('reel_submissions').update({ title: editing.title.trim(), caption: editing.caption.trim() }).eq('id', editing.id);
-    if (error) setMessage(error.message); else { setEditing(null); setMessage('Pending Reel updated.'); refresh(); }
+    const request = editing.status === 'rejected'
+      ? supabase.rpc('resubmit_my_reel', { p_reel_id: editing.id, p_title: editing.title.trim(), p_caption: editing.caption.trim() })
+      : supabase.from('reel_submissions').update({ title: editing.title.trim(), caption: editing.caption.trim() }).eq('id', editing.id);
+    const { error } = await request;
+    if (error) setMessage(error.message); else { setEditing(null); setMessage(editing.status === 'rejected' ? 'Reel resubmitted for AI review.' : 'Pending Reel updated.'); refresh(); }
   };
   const removePending = async (reel: Reel) => {
     if (!window.confirm(`Delete “${reel.title}”? This cannot be undone.`)) return;
