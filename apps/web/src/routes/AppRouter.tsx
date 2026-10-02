@@ -19,6 +19,7 @@ import SettingsPage from "@/pages/dashboard/SettingsPage"
 import ReelsPage from "@/pages/dashboard/ReelsPage"
 import CreateReelPage from "@/pages/dashboard/CreateReelPage"
 import CreatorProfilePage from "@/pages/dashboard/CreatorProfilePage"
+import CreatorConnectionsPage from "@/pages/dashboard/CreatorConnectionsPage"
 import CreatorProfileEditorPage from "@/pages/dashboard/CreatorProfileEditorPage"
 import CreatorStudioPage from "@/pages/dashboard/CreatorStudioPage"
 import CreatorFilmStudioPage from "@/pages/dashboard/CreatorFilmStudioPage"
@@ -76,6 +77,7 @@ export default function AppRouter() {
         <Route path="creator-film-studio" element={<CreatorFilmStudioPage />} />
         <Route path="creators" element={<CreatorDiscoveryPage />} />
         <Route path="creator/:creatorId" element={<CreatorProfilePage />} />
+        <Route path="creator-connections" element={<CreatorConnectionsPage />} />
         <Route path="creator/edit" element={<CreatorProfileEditorPage />} />
         <Route path="creator-onboarding" element={<CreatorOnboardingPage />} />
         <Route path="content/:contentId" element={<ContentDetailPage />} />
