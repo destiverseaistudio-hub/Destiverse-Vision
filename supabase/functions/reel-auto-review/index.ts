@@ -48,6 +48,13 @@ Deno.serve(async (request) => {
   const { data: reel, error } = await caller.from("reel_submissions").select("id,title,caption,creator_id,status,video_url,ai_media_file_name").eq("id", reelId).maybeSingle()
   if (error || !reel || reel.creator_id !== auth.user.id || reel.status !== "pending") return respond({ error: "Reel not available for review" }, 404)
   const admin = createClient(url, service)
+  // Cloudflare Stream playback URLs are HLS manifests, not the uploaded source
+  // video Gemini's Files API needs. Keep these Reels in the human queue until
+  // the media-processing worker supplies a reviewable source rendition.
+  if (/^https?:\/\//i.test(reel.video_url)) {
+    await admin.from("reel_submissions").update({ auto_review_status: "needs_review", auto_review_reason: "Cloudflare video is encoding; automatic media review will continue when the processing worker provides a source rendition." }).eq("id", reel.id)
+    return respond({ status: "processing", notice: "Your Reel is encoding securely. It will continue to review when processing is ready." }, 202)
+  }
   if (!key || !model) { await admin.from("reel_submissions").update({ auto_review_status: "unavailable", auto_review_reason: "AI media review is not configured yet." }).eq("id", reel.id); return respond({ status: "unavailable", notice: "Your Reel is queued for an administrator because AI review is not configured." }) }
   try {
     let file: GeminiFile
