@@ -1,10 +1,10 @@
 const cacheName = "destiverse-offline-v1"
 const recordsKey = "destiverse-offline-records"
 
-export type OfflineRecord = { id: string; title: string; source: string; savedAt: string; bytes: number }
+export type OfflineRecord = { id: string; title: string; source: string; savedAt: string; bytes: number; kind: "Video" | "Reel" }
 
 function readRecords(): OfflineRecord[] {
-  try { const data = JSON.parse(localStorage.getItem(recordsKey) ?? "[]"); return Array.isArray(data) ? data : [] } catch { return [] }
+  try { const data = JSON.parse(localStorage.getItem(recordsKey) ?? "[]"); return Array.isArray(data) ? data.map((item) => ({ ...item, kind: item.kind === "Reel" || String(item.id).startsWith("reel:") ? "Reel" : "Video" })) : [] } catch { return [] }
 }
 function writeRecords(records: OfflineRecord[]) { localStorage.setItem(recordsKey, JSON.stringify(records)) }
 
@@ -20,7 +20,7 @@ export async function getDeviceStorageEstimate() {
   return navigator.storage?.estimate?.() ?? {}
 }
 
-export async function downloadForOffline(item: { id: string; title: string; source: string }) {
+export async function downloadForOffline(item: { id: string; title: string; source: string; kind: "Video" | "Reel" }) {
   const response = await fetch(item.source)
   if (!response.ok) throw new Error(`Download failed (${response.status}).`)
   const bytes = Number(response.headers.get("content-length") ?? 0)
@@ -31,7 +31,7 @@ export async function downloadForOffline(item: { id: string; title: string; sour
   const cache = await caches.open(cacheName)
   await cache.put(item.source, copy)
   const records = readRecords().filter(record => record.id !== item.id)
-  writeRecords([{ id: item.id, title: item.title, source: item.source, savedAt: new Date().toISOString(), bytes }, ...records])
+  writeRecords([{ id: item.id, title: item.title, source: item.source, kind: item.kind, savedAt: new Date().toISOString(), bytes }, ...records])
 }
 
 export async function removeOfflineDownload(id: string) {
@@ -43,6 +43,11 @@ export async function removeOfflineDownload(id: string) {
 export async function clearOfflineDownloads() {
   await caches.delete(cacheName)
   writeRecords([])
+}
+
+export async function clearAppCache() {
+  const names = await caches.keys()
+  await Promise.all(names.filter((name) => name !== cacheName).map((name) => caches.delete(name)))
 }
 
 export async function getOfflineVideoUrl(record: OfflineRecord) {

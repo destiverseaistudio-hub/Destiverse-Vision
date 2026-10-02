@@ -188,7 +188,7 @@ export default function App() {
     update_title: "",
     update_message: "",
     release_notes: "",
-    update_link: "",
+    update_link: "", update_notification_sent_version: "",
     support_email: "", support_phone: "", support_whatsapp_url: "", contact_cta_label: "Contact support", contact_cta_url: "", site_url: "", instagram_url: "", facebook_url: "", youtube_url: "", tiktok_url: "", x_url: "", whatsapp_channel_url: "", google_drive_enabled: "false", google_adsense_enabled: "false", google_adsense_client: "", google_adsense_home_slot: "", google_adsense_content_slot: "", maintenance_enabled: "false", maintenance_message: "", about_page: "", privacy_policy: "", terms_of_service: "", help_center: "",
   })
   const [eventRecords, setEventRecords] = useState<ContentEvent[]>([])
@@ -300,7 +300,7 @@ export default function App() {
           update_title: settings.update_title ?? "",
           update_message: settings.update_message ?? "",
           release_notes: settings.release_notes ?? "",
-          update_link: settings.update_link ?? "",
+          update_link: settings.update_link ?? "", update_notification_sent_version: settings.update_notification_sent_version ?? "",
           support_email: settings.support_email ?? "", support_phone: settings.support_phone ?? "", support_whatsapp_url: settings.support_whatsapp_url ?? "", contact_cta_label: settings.contact_cta_label ?? "Contact support", contact_cta_url: settings.contact_cta_url ?? "", site_url: settings.site_url ?? "", instagram_url: settings.instagram_url ?? "", facebook_url: settings.facebook_url ?? "", youtube_url: settings.youtube_url ?? "", tiktok_url: settings.tiktok_url ?? "", x_url: settings.x_url ?? "", whatsapp_channel_url: settings.whatsapp_channel_url ?? "", google_drive_enabled: settings.google_drive_enabled ?? "false", google_adsense_enabled: settings.google_adsense_enabled ?? "false", google_adsense_client: settings.google_adsense_client ?? "", google_adsense_home_slot: settings.google_adsense_home_slot ?? "", google_adsense_content_slot: settings.google_adsense_content_slot ?? "", maintenance_enabled: settings.maintenance_enabled ?? "false", maintenance_message: settings.maintenance_message ?? "", about_page: settings.about_page ?? "", privacy_policy: settings.privacy_policy ?? "", terms_of_service: settings.terms_of_service ?? "", help_center: settings.help_center ?? "",
         })
       }
@@ -771,7 +771,18 @@ export default function App() {
       Object.entries(settingsDraft).map(([key, value]) => ({ key, value })),
     )
     if (settingsError) setError(settingsError.message)
-    else setNotice("Site settings saved and published live")
+    else {
+      const releaseVersion = settingsDraft.update_version.trim() || settingsDraft.app_version.trim()
+      const shouldNotifyDevices = settingsDraft.update_enabled === "true" && Boolean(releaseVersion) && settingsDraft.update_notification_sent_version !== releaseVersion
+      if (shouldNotifyDevices) {
+        const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", { body: { title: settingsDraft.update_title.trim() || "DestiVerse Vision update", message: settingsDraft.update_message.trim() || `Version ${releaseVersion} is ready to update.`, action_url: settingsDraft.update_link || "/updates", audience: "all" } })
+        if (!pushError) {
+          await supabase.from("app_settings").upsert({ key: "update_notification_sent_version", value: releaseVersion })
+          setSettingsDraft((current) => ({ ...current, update_notification_sent_version: releaseVersion }))
+          setNotice(`Release settings are live; update sent to ${pushResult?.delivered ?? 0} opted-in device${pushResult?.delivered === 1 ? "" : "s"}.`)
+        } else setNotice("Release settings are live. Device push was not sent; check VAPID configuration, then publish a device notification from Operations.")
+      } else setNotice("Site settings saved and published live")
+    }
     setBusy(false)
   }
 
