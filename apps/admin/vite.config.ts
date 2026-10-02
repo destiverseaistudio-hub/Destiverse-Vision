@@ -8,7 +8,7 @@ const appDirectory = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   root: appDirectory,
-  envDir: appDirectory,
+  envDir: path.resolve(appDirectory, "../.."),
   plugins: [react(), tailwindcss()],
   server: {
     host: "localhost",

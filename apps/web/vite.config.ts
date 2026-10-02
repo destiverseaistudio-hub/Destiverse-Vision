@@ -12,6 +12,8 @@ const buildId = process.env.VERCEL_GIT_COMMIT_SHA
   || `local-${Date.now()}`
 
 export default defineConfig({
+  // Load the Vercel project environment from the monorepo root.
+  envDir: path.resolve(__dirname, "../.."),
   define: {
     "import.meta.env.VITE_APP_BUILD_ID": JSON.stringify(buildId),
   },
