@@ -74,6 +74,17 @@ function slugify(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "destiverse-content"
 }
 
+function fallbackAdCopy(name: string, headline: string, body: string) {
+  const idea = (name || headline || body).trim()
+  const title = idea.slice(0, 120) || "DestiVerse feature"
+  return {
+    name: name.trim() || title,
+    headline: headline.trim() || title,
+    body: body.trim() || `Discover ${title} on DestiVerse Vision. Review the campaign destination and media before publishing.`,
+    cta_label: "Learn more",
+  }
+}
+
 async function uploadWithRetry(bucket: string, path: string, file: File, options: { upsert?: boolean; contentType?: string; cacheControl?: string } = {}) {
   let lastError: { message: string } | null = null
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -147,6 +158,7 @@ export default function App() {
   const [deletionRequests, setDeletionRequests] = useState<AccountDeletionRequest[]>([])
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
   const [pushSubscriptionCount, setPushSubscriptionCount] = useState<number | null>(null)
+  const [userLoadError, setUserLoadError] = useState("")
   const [adDraft, setAdDraft] = useState({ name: "", format: "banner" as AdCampaign["format"], placement: "home" as AdCampaign["placement"], headline: "", body: "", media_url: "", video_url: "", cta_label: "Learn more", cta_url: "", skip_after_seconds: "5", midroll_at_seconds: "30", reel_interval: "10", frequency_cap_per_day: "3", priority: "0", active: false, premium_visible: false, starts_at: "", ends_at: "" })
   const [editingAdId, setEditingAdId] = useState<string | null>(null)
   const [planDraft, setPlanDraft] = useState({ name: "", price_cents: "", currency: "NGN", features: "", coins_included: "0", active: true })
@@ -293,7 +305,8 @@ export default function App() {
         })
       }
       const { data: userData, error: userError } = await supabase.rpc("admin_list_users")
-      if (!userError) setUsers((userData ?? []) as UserRecord[])
+      if (userError) { setUsers([]); setUserLoadError(`User directory could not load: ${userError.message}`) }
+      else { setUsers((userData ?? []) as UserRecord[]); setUserLoadError("") }
       const [{ data: flags }, { data: notices }, { data: support }, { data: audit }, { data: reels, error: reelsError }, { data: applications }, { data: reports }, { data: flaggedReels }, { data: flaggedCreators }, { data: appeals }, { count: reelViewCount }, { count: loveCount }, { count: commentCount }] = await Promise.all([
         supabase.from("feature_flags").select("key,name,description,enabled,audience").order("name"),
         supabase.from("admin_notifications").select("id,title,message,action_url,audience,published,expires_at").order("created_at", { ascending: false }),
@@ -967,9 +980,14 @@ export default function App() {
     try {
       const { data, error: assistError } = await supabase.functions.invoke("admin-content-assist", { body: { mode: "ad_campaign", title: adDraft.name || adDraft.headline, description: adDraft.body || adDraft.headline, currentType: adDraft.format, currentCategory: adDraft.placement } })
       if (assistError) throw assistError
-      setAdDraft((current) => ({ ...current, name: data.name || current.name, headline: data.headline || current.headline, body: data.body || current.body, cta_label: data.cta_label || current.cta_label }))
+      const draft = fallbackAdCopy(data?.name || adDraft.name, data?.headline || adDraft.headline, data?.body || adDraft.body)
+      setAdDraft((current) => ({ ...current, ...draft, cta_label: data?.cta_label || current.cta_label || draft.cta_label }))
       setNotice("AI prepared the ad copy. Review claims, media, audience, and destination before publishing.")
-    } catch (assistError) { setError(assistError instanceof Error ? assistError.message : "Could not draft ad copy") }
+    } catch {
+      const draft = fallbackAdCopy(adDraft.name, adDraft.headline, adDraft.body)
+      setAdDraft((current) => ({ ...current, ...draft }))
+      setNotice("The cloud AI is unavailable, so DestiVerse created a safe starter draft. Configure GEMINI_API_KEY in Supabase Edge Function secrets to restore Gemini writing.")
+    }
     setAdAiBusy(false)
   }
 
@@ -1066,6 +1084,7 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar"><div className="topbar-brand">{activeView !== "overview" ? <button type="button" className="secondary icon-button" onClick={() => setActiveView("overview")} aria-label="Back to overview" title="Back to overview"><ArrowLeft size={16} /></button> : null}<img src="/brand/destiverse-vision-logo.png" alt="DestiVerse Vision" className="brand-logo" /><div><p className="eyebrow">DestiVerse control room</p><h1>{{ overview: "Overview", content: "Content library", categories: "Categories", settings: "Site settings", users: "Users", operations: "Operations", reels: "Reel moderation", membership: "Membership & Coins", ads: "Advertising" }[activeView]}</h1></div></div><div className="topbar-actions"><span className="live-indicator"><span /> Live sync</span><button className="secondary icon-button" onClick={() => window.open(publicAppUrl, "_blank", "noopener,noreferrer")}><ExternalLink size={16} /> View app</button><button className="secondary icon-button" onClick={refreshCurrentAdminView}><RefreshCw size={16} /> Refresh</button><button className="secondary icon-button" onClick={() => void supabase.auth.signOut()}><LogOut size={16} /> Sign out</button></div></header>
       {error && <p className="banner error">{error}</p>}
+      {activeView === "users" && userLoadError ? <p className="banner error">{userLoadError} Apply the latest database migration, then refresh this page.</p> : null}
       {notice && <p className="banner success">{notice}</p>}
       <nav className="admin-nav" aria-label="Admin sections">
         <button className={activeView === "overview" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("overview")}><LayoutDashboard size={17} /> Overview</button>

@@ -24,10 +24,16 @@ export async function disablePushNotifications() {
   const registration = await navigator.serviceWorker.ready
   const subscription = await registration.pushManager.getSubscription()
   const endpoint = subscription?.endpoint
-  await subscription?.unsubscribe()
+  if (subscription && !(await subscription.unsubscribe())) throw new Error("This device could not unsubscribe from push notifications. Try again from your browser settings.")
   if (!endpoint) return
   const { error } = await supabase.from("push_subscriptions").update({ active: false }).eq("endpoint", endpoint)
   if (error) throw error
+}
+
+export async function isPushEnabledOnThisDevice() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false
+  const registration = await navigator.serviceWorker.ready
+  return Boolean(await registration.pushManager.getSubscription())
 }
 
 export async function getPushPermission() {
