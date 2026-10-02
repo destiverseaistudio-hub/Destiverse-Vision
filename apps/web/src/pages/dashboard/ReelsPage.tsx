@@ -37,6 +37,8 @@ type Reel = {
   caption: string;
   video_url: string;
   poster_url: string | null;
+  media_type?: 'video' | 'image';
+  editor_settings?: { overlay_text?: string; filter?: 'none' | 'vivid' | 'mono' | 'warm' } | null;
   creator_id?: string;
   creator_profiles?: { handle: string; display_name?: string | null; avatar_url?: string | null } | null;
   demo?: boolean;
@@ -198,15 +200,16 @@ export default function ReelsPage() {
     const load = async () => {
       const { data } = await supabase
         .from('reel_submissions')
-        .select('id,title,caption,video_url,poster_url,audio_label,creator_id,creator_profiles(handle,display_name,avatar_url)')
+        .select('id,title,caption,video_url,poster_url,media_type,editor_settings,audio_label,creator_id,creator_profiles(handle,display_name,avatar_url)')
         .eq('status', 'approved')
         .order('published_at', { ascending: false });
       const signed = await Promise.all(
         (data ?? []).map(async (reel) => {
-          const { data: url } = await supabase.storage
-            .from('creator-reels')
-            .createSignedUrl(reel.video_url, 3600);
-          return { ...reel, video_url: url?.signedUrl ?? reel.video_url };
+          const [{ data: mediaUrl }, { data: posterUrl }] = await Promise.all([
+            supabase.storage.from('creator-reels').createSignedUrl(reel.video_url, 3600),
+            reel.poster_url ? supabase.storage.from('creator-reels').createSignedUrl(reel.poster_url, 3600) : Promise.resolve({ data: null }),
+          ]);
+          return { ...reel, video_url: mediaUrl?.signedUrl ?? reel.video_url, poster_url: posterUrl?.signedUrl ?? reel.poster_url };
         }),
       );
       const ids = (data ?? []).map((reel) => reel.id);
@@ -856,13 +859,20 @@ export default function ReelsPage() {
           <article key={reel.id} data-reel-id={reel.id} tabIndex={0} onKeyDown={(event) => { if (!reel.demo && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCenterTap(reel); } }} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 outline-none focus-visible:ring-2 focus-visible:ring-[var(--dv-accent)] touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
+            ) : reel.media_type === 'image' ? (
+              <>
+                <img src={reel.video_url} alt={reel.title} className="absolute inset-0 h-full w-full object-cover" style={{ filter: reel.editor_settings?.filter === 'vivid' ? 'saturate(1.45) contrast(1.08)' : reel.editor_settings?.filter === 'mono' ? 'grayscale(1) contrast(1.08)' : reel.editor_settings?.filter === 'warm' ? 'sepia(.24) saturate(1.2)' : 'none' }} />
+                {reel.editor_settings?.overlay_text ? <span className="pointer-events-none absolute inset-x-5 bottom-44 z-10 text-center text-xl font-black leading-tight text-white [text-shadow:0_2px_10px_rgb(0_0_0_/_0.9)]">{reel.editor_settings.overlay_text}</span> : null}
+              </>
             ) : (
+              <>
               <video
                 ref={(node) => {
                   if (node) videoRefs.current[reel.id] = node;
                   else delete videoRefs.current[reel.id];
                 }}
                 className={`absolute inset-0 h-full w-full ${mediaFitByReel[reel.id] === 'contain' ? 'object-contain' : 'object-cover'}`}
+                style={{ filter: reel.editor_settings?.filter === 'vivid' ? 'saturate(1.45) contrast(1.08)' : reel.editor_settings?.filter === 'mono' ? 'grayscale(1) contrast(1.08)' : reel.editor_settings?.filter === 'warm' ? 'sepia(.24) saturate(1.2)' : 'none' }}
                 src={reel.video_url}
                 playsInline
                 loop
@@ -884,6 +894,8 @@ export default function ReelsPage() {
                 onError={() => { setReelLoading((current) => ({ ...current, [reel.id]: false })); setReelErrors((current) => ({ ...current, [reel.id]: true })); }}
                 onPlay={() => void trackView(reel)}
               />
+              {reel.editor_settings?.overlay_text ? <span className="pointer-events-none absolute inset-x-5 bottom-44 z-10 text-center text-xl font-black leading-tight text-white [text-shadow:0_2px_10px_rgb(0_0_0_/_0.9)]">{reel.editor_settings.overlay_text}</span> : null}
+              </>
             )}
             {reelLoading[reel.id] && activeReelId === reel.id ? (
               <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-black/35">
@@ -899,7 +911,7 @@ export default function ReelsPage() {
               </div>
             ) : null}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/35" />
-            {!reel.demo ? (
+            {!reel.demo && reel.media_type !== 'image' ? (
               <button
                 type="button"
                 onClick={() => {

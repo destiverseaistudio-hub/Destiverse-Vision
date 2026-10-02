@@ -11,7 +11,7 @@ function localTriage(title: string, caption: string): ReviewResult {
   const mediumRisk = ["prank", "fight", "blood", "medical", "drink", "drug", "gambling", "copyright"]
   if (highRisk.some((term) => text.includes(term))) return { status: "flagged", reason: "Text metadata contains terms that require priority human review." }
   if (mediumRisk.some((term) => text.includes(term))) return { status: "needs_review", reason: "Text metadata may need an age, safety, or rights review." }
-  return { status: "clear", reason: "Text metadata has no automated risk signals. A human must still review the video itself." }
+  return { status: "clear", reason: "Text metadata has no automated risk signals. A human must still review the submitted media." }
 }
 
 Deno.serve(async (request) => {
@@ -33,5 +33,5 @@ Deno.serve(async (request) => {
   const adminClient = createClient(supabaseUrl, serviceKey)
   const { error: saveError } = await adminClient.from("reel_submissions").update({ auto_review_status: result.status, auto_review_reason: result.reason, auto_reviewed_at: new Date().toISOString() }).eq("id", reel.id)
   if (saveError) return respond({ error: "Could not save automated review" }, 500)
-  return respond({ ...result, notice: "Automated review checked only title and caption. It did not watch the video." })
+  return respond({ ...result, notice: "Automated review checked only title and caption. It did not inspect the submitted media." })
 })
