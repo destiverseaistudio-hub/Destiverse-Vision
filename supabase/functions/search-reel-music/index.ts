@@ -16,14 +16,15 @@ Deno.serve(async (request) => {
   let input: { query?: string }
   try { input = await request.json() } catch { return json({ error: "Invalid music search." }, 400) }
   const query = input.query?.trim().replace(/\s+/g, " ")
-  if (!query || query.length < 2 || query.length > 100) return json({ error: "Enter a music search between 2 and 100 characters." }, 400)
+  if (query && (query.length < 2 || query.length > 100)) return json({ error: "Enter a music search between 2 and 100 characters." }, 400)
   if (!clientId) return json({ results: [], notice: "The DestiVerse music provider is not configured yet. You can still use music you own." })
   const endpoint = new URL("https://api.jamendo.com/v3.0/tracks/")
   endpoint.searchParams.set("client_id", clientId)
   endpoint.searchParams.set("format", "json")
-  endpoint.searchParams.set("limit", "25")
-  endpoint.searchParams.set("search", query)
-  endpoint.searchParams.set("order", "relevance")
+  endpoint.searchParams.set("limit", query ? "25" : "6")
+  if (query) endpoint.searchParams.set("search", query)
+  else endpoint.searchParams.set("fuzzytags", "instrumental")
+  endpoint.searchParams.set("order", query ? "relevance" : "popularity_total")
   const upstream = await fetch(endpoint)
   if (!upstream.ok) return json({ error: "Music search is temporarily unavailable." }, 502)
   const payload = await upstream.json()
@@ -32,7 +33,7 @@ Deno.serve(async (request) => {
       const license = String(track.license_ccurl ?? "")
       // Only expose Creative Commons tracks that permit commercial reuse and
       // adaptations. Never treat unknown, NC, or ND tracks as free Reel music.
-      const usable = /creativecommons\.org\/licenses\/(by\/|zero\/)/i.test(license) && !/\/(by-nc|by-nd|by-nc-nd)\//i.test(license)
+      const usable = /creativecommons\.org\/licenses\//i.test(license) && !/licenses\/by-nc|licenses\/by-nd/i.test(license)
       if (!usable || !track.id || !track.name || !track.audio) return null
       return { id: String(track.id), title: String(track.name).slice(0, 120), artist: String(track.artist_name ?? "Independent artist").slice(0, 120), duration: Number(track.duration) || 0, preview_url: track.audio, artwork_url: track.image ?? null, license_url: license, license_name: license.includes("zero") ? "CC0" : "Creative Commons Attribution", attribution: `“${track.name}” by ${track.artist_name ?? "Independent artist"}, licensed under ${license.includes("zero") ? "CC0" : "CC BY"}.` }
     })
