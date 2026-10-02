@@ -47,11 +47,10 @@ export default function CreatorProfilePage() {
     let live = true;
     const load = async () => {
       setLoading(true);
-      const [profile, published, followerCount, followingCount, follow, block] = await Promise.all([
+      const [profile, published, followCounts, follow, block] = await Promise.all([
         supabase.from('creator_profiles').select('handle,display_name,bio,avatar_url').eq('user_id', creatorId).maybeSingle(),
         supabase.from('reel_submissions').select('id,title,caption,video_url,poster_url,status,visibility,audio_label,created_at').eq('creator_id', creatorId).eq('status', 'approved').eq('visibility', 'public').order('published_at', { ascending: false }),
-        supabase.from('reel_creator_follows').select('follower_id', { count: 'exact', head: true }).eq('creator_id', creatorId),
-        supabase.from('reel_creator_follows').select('creator_id', { count: 'exact', head: true }).eq('follower_id', creatorId),
+        supabase.rpc('get_creator_profile_follow_counts', { p_creator_id: creatorId }),
         session ? supabase.from('reel_creator_follows').select('creator_id').eq('follower_id', session.user.id).eq('creator_id', creatorId).maybeSingle() : Promise.resolve({ data: null }),
         session ? supabase.from('creator_blocks').select('creator_id').eq('blocker_id', session.user.id).eq('creator_id', creatorId).maybeSingle() : Promise.resolve({ data: null }),
       ]);
@@ -74,7 +73,8 @@ export default function CreatorProfilePage() {
       }
       if (!live) return;
       setCreator(profile.data as Creator | null); setPublicReels(publicItems); setMyReels(ownItems);
-      setFollowers(followerCount.count ?? 0); setFollowing(followingCount.count ?? 0); setIsFollowing(Boolean(follow.data)); setIsBlocked(Boolean(block.data));
+       const counts = (followCounts.data ?? [])[0] as { followers?: number | string; following?: number | string } | undefined;
+       setFollowers(Number(counts?.followers ?? 0)); setFollowing(Number(counts?.following ?? 0)); setIsFollowing(Boolean(follow.data)); setIsBlocked(Boolean(block.data));
       setEngagement(((countRows ?? []) as Engagement[]).reduce<Record<string, { likes: number; views: number }>>((all, row) => ({ ...all, [row.reel_id]: { likes: Number(row.likes), views: Number(row.views) } }), {}));
       setLoading(false);
     };
