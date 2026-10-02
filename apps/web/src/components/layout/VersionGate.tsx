@@ -4,7 +4,9 @@ import { RefreshCw } from "lucide-react"
 import { useContent } from "@/contexts/ContentContext"
 import { compareVersions, isVersionAtLeast } from "@/utils/version"
 
-const APP_VERSION = "1.0.0"
+// This is the version embedded in the deployed client, not an admin-editable
+// label. Set VITE_APP_VERSION during each web deployment.
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.0.0"
 
 export default function VersionGate({ children }: { children: React.ReactNode }) {
   const { settings } = useContent()

@@ -488,8 +488,9 @@ export default function App() {
   }
 
   const assistWithRelease = async () => {
-    if (!settingsDraft.update_title.trim()) {
-      setError("Enter a short update title before using AI assist")
+    const version = settingsDraft.update_version.trim() || settingsDraft.app_version.trim()
+    if (!version) {
+      setError("Enter the release version before using AI assist")
       return
     }
     setReleaseAiBusy(true)
@@ -500,7 +501,7 @@ export default function App() {
           mode: "release",
           title: settingsDraft.update_title,
           description: settingsDraft.update_message,
-          version: settingsDraft.update_version,
+          version,
         },
       })
       if (assistError) throw assistError
@@ -509,7 +510,8 @@ export default function App() {
         update_title: data.title || current.update_title,
         update_message: data.message || current.update_message,
         release_notes: data.release_notes || data.notes || current.release_notes,
-        app_version: data.version || current.app_version || current.update_version,
+        app_version: version,
+        update_version: version,
         announcement: data.announcement || current.announcement,
       }))
       setNotice("AI prepared update messaging. Review it before publishing.")
@@ -766,13 +768,22 @@ export default function App() {
 
   const saveSettings = async (event: FormEvent) => {
     event.preventDefault()
+    const appVersion = settingsDraft.app_version.trim()
+    const releaseVersion = settingsDraft.update_version.trim()
+    if (settingsDraft.update_enabled === "true" && (!appVersion || !releaseVersion || appVersion !== releaseVersion)) {
+      setError("Current app version and release version must be the same before publishing an update.")
+      return
+    }
+    if (settingsDraft.update_enabled === "true" && (!settingsDraft.update_title.trim() || !settingsDraft.update_message.trim())) {
+      setError("Add an accurate update title and message before publishing the release ribbon.")
+      return
+    }
     setBusy(true)
     const { error: settingsError } = await supabase.from("app_settings").upsert(
       Object.entries(settingsDraft).map(([key, value]) => ({ key, value })),
     )
     if (settingsError) setError(settingsError.message)
     else {
-      const releaseVersion = settingsDraft.update_version.trim() || settingsDraft.app_version.trim()
       const shouldNotifyDevices = settingsDraft.update_enabled === "true" && Boolean(releaseVersion) && settingsDraft.update_notification_sent_version !== releaseVersion
       if (shouldNotifyDevices) {
         const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", { body: { title: settingsDraft.update_title.trim() || "DestiVerse Vision update", message: settingsDraft.update_message.trim() || `Version ${releaseVersion} is ready to update.`, action_url: settingsDraft.update_link || "/updates", audience: "all" } })
