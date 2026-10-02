@@ -101,6 +101,7 @@ html {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   max-width: 100%;
   margin: 0;
@@ -119,6 +120,31 @@ body {
   min-width: 0;
   max-width: 100%;
   overflow-x: clip;
+}
+
+/* Shared compact layout guard: all screen sizes may shrink without a child
+   forcing a horizontal page scroll. Individual rows may still opt into their
+   own horizontal scrolling for carousels and the mobile navigation. */
+:where(.flex, .grid) > * {
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  button,
+  a {
+    touch-action: manipulation;
+  }
 }
 
 /* Keep long labels, URLs, and account emails from widening the mobile viewport. */
