@@ -1,6 +1,6 @@
 import { FileVideo, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -8,6 +8,8 @@ type Reel = { id: string; title: string; caption: string; status: 'pending' | 'a
 
 export default function CreatorStudioPage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedReelId = searchParams.get('reel');
   const [approved, setApproved] = useState(false);
   const [accountStatus, setAccountStatus] = useState('');
   const [loading, setLoading] = useState(true);
@@ -61,6 +63,16 @@ export default function CreatorStudioPage() {
     void fetchStudio();
     return () => { active = false };
   }, [session?.user?.id, refreshCount]);
+
+  useEffect(() => {
+    const focusedReel = reels.find((reel) => reel.id === focusedReelId);
+    if (!focusedReel) return;
+    const target = Array.from(document.querySelectorAll('article strong')).find((element) => element.textContent === focusedReel.title)?.closest('article');
+    if (!target) return;
+    target.classList.add('border-[var(--dv-accent)]', 'ring-2', 'ring-[var(--dv-accent)]/30');
+    const frame = window.requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => { window.cancelAnimationFrame(frame); target.classList.remove('border-[var(--dv-accent)]', 'ring-2', 'ring-[var(--dv-accent)]/30'); };
+  }, [focusedReelId, reels]);
 
   // Gemini can take longer than the upload request to finish video processing.
   // When the creator returns here, resume that secure check without making them

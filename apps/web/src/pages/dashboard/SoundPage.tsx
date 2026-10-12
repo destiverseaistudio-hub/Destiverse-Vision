@@ -67,13 +67,15 @@ export default function SoundPage() {
   }, [soundLabel, session]);
 
   useEffect(() => {
-    if (!session || !soundKey) { setSoundSaved(false); return; }
+    if (!session || !soundKey) return;
     void supabase.from('reel_sound_saves').select('sound_key').eq('user_id', session.user.id).eq('sound_key', soundKey).maybeSingle().then(({ data }) => setSoundSaved(Boolean(data)));
   }, [session, soundKey]);
 
+  const savedOnThisDevice = Boolean(session && soundKey && soundSaved);
+
   const toggleSoundSave = async () => {
     if (!session || !soundKey) { navigate('/login'); return; }
-    const { error } = soundSaved
+    const { error } = savedOnThisDevice
       ? await supabase.from('reel_sound_saves').delete().eq('user_id', session.user.id).eq('sound_key', soundKey)
       : await supabase.from('reel_sound_saves').upsert({ user_id: session.user.id, sound_key: soundKey, sound_label: soundLabel }, { onConflict: 'user_id,sound_key' });
     if (!error) setSoundSaved((value) => !value);

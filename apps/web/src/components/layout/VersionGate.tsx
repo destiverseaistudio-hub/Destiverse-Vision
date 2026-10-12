@@ -1,37 +1,19 @@
-import { useEffect, useMemo, useState } from "react"
 import { RefreshCw } from "lucide-react"
 
 import { useContent } from "@/contexts/ContentContext"
-import { compareVersions, isVersionAtLeast } from "@/utils/version"
+import { compareVersions } from "@/utils/version"
 
 // This is the version embedded in the deployed client, not an admin-editable
 // label. Set VITE_APP_VERSION during each web deployment.
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.0.0"
 
 export default function VersionGate({ children }: { children: React.ReactNode }) {
-  const { settings } = useContent()
-  const [isReady, setIsReady] = useState(false)
+  const { settings, loading } = useContent()
 
   const minimumVersion = settings.minimum_required_version || settings.app_version || null
   const releaseVersion = settings.update_version || settings.app_version || APP_VERSION
 
-  const hasUpdateRequired = useMemo(() => {
-    if (!minimumVersion) return false
-    return !isVersionAtLeast(APP_VERSION, minimumVersion)
-  }, [minimumVersion])
-
-  useEffect(() => {
-    const requiredVersion = settings.minimum_required_version || settings.app_version || null
-    if (!requiredVersion) {
-      setIsReady(true)
-      return
-    }
-
-    const mustUpdate = compareVersions(APP_VERSION, requiredVersion) < 0
-    setIsReady(!mustUpdate)
-  }, [settings.app_version, settings.minimum_required_version])
-
-  if (!isReady) {
+  if (loading || compareVersions(APP_VERSION, minimumVersion ?? APP_VERSION) < 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[var(--dv-background)] px-6 py-10 text-center text-white">
         <section className="w-full max-w-md rounded-3xl border border-[var(--dv-accent)]/25 bg-[var(--dv-surface)] p-8 shadow-[var(--dv-shadow-elevated)]">
@@ -56,10 +38,6 @@ export default function VersionGate({ children }: { children: React.ReactNode })
         </section>
       </main>
     )
-  }
-
-  if (hasUpdateRequired) {
-    return null
   }
 
   return <>{children}</>

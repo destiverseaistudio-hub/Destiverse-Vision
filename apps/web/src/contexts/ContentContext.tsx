@@ -5,13 +5,12 @@ import { allContent as fallbackContent, contentRows as fallbackRows, featuredCon
 import type { ContentItem } from "@/data/content"
 import { ContentContext, type DatabaseContent, type Settings } from "./ContentContextDef"
 
+// This module also exports the provider, so keep the hook colocated for the
+// established import surface used across the dashboard.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useContent() {
   const context = useContext(ContentContext)
-
-  if (!context) {
-    throw new Error("useContent must be used inside ContentProvider")
-  }
-
+  if (!context) throw new Error("useContent must be used inside ContentProvider")
   return context
 }
 

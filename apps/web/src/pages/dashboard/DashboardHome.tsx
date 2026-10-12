@@ -1,6 +1,6 @@
 import DashboardHero from '@/components/content/DashboardHero';
 import DashboardSections from '@/components/content/DashboardSections';
-import { useContent } from '@/contexts/ContentContext';
+import { useContent } from '@/hooks/useContent';
 import { useEffect, useState } from 'react';
 import ContentRow from '@/components/content/ContentRow';
 import { getWatchProgress } from '@/services/library';
