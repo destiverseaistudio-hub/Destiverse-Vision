@@ -9,7 +9,7 @@ type MediaType = "video" | "image"
 type CatalogTrack = { id: string; title: string; artist: string; preview_url: string; license_name: string; attribution: string }
 type ManagedTrack = { id: string; title: string; audio_url: string }
 type Place = { id: number; label: string; latitude: number; longitude: number }
-const maximumBytes = 100 * 1024 * 1024
+const maximumBytes = 50 * 1024 * 1024
 const filters = { none: "none", vivid: "saturate(1.45) contrast(1.08)", warm: "sepia(.24) saturate(1.2)", mono: "grayscale(1) contrast(1.08)" }
 
 export default function CreateReelPage() {
@@ -29,7 +29,7 @@ export default function CreateReelPage() {
   useEffect(() => { if (audioRef.current) audioRef.current.volume = musicMuted ? 0 : musicVolume / 100 }, [musicMuted, musicVolume])
   useEffect(() => { if (videoRef.current) { videoRef.current.muted = originalMuted; videoRef.current.volume = originalMuted ? 0 : originalVolume / 100; videoRef.current.playbackRate = rate } }, [originalMuted, originalVolume, rate])
 
-  function pickMedia(file: File | null, type: MediaType) { if (!file) return; if (file.size > maximumBytes) return setMessage("Choose media smaller than 100 MB."); if (mediaUrl) URL.revokeObjectURL(mediaUrl); setMedia(file); setMediaType(type); setMediaUrl(URL.createObjectURL(file)); setStep("edit"); setMessage("") }
+  function pickMedia(file: File | null, type: MediaType) { if (!file) return; if (file.size > maximumBytes) return setMessage("Choose media smaller than 50 MB."); if (mediaUrl) URL.revokeObjectURL(mediaUrl); setMedia(file); setMediaType(type); setMediaUrl(URL.createObjectURL(file)); setStep("edit"); setMessage("") }
   async function findMusic(query: string) { if (query && query.length < 2) return setMessage("Enter at least two characters to search music."); const { data, error } = await supabase.functions.invoke("search-reel-music", { body: { query: query || undefined } }); if (error || !data) return setMessage(data?.error || "Music search is unavailable. Confirm the deployed music function and Jamendo secret."); setTracks((data.results ?? []) as CatalogTrack[]); setMessage(data.notice || (query ? "Search results ready." : "Suggested music ready.")) }
   async function findLocation() { if (location.trim().length < 2) return setMessage("Enter at least two characters to search locations."); const { data, error } = await supabase.functions.invoke("search-reel-location", { body: { query: location.trim() } }); if (error || !data) return setMessage(data?.error || "Location search is unavailable."); setPlaces((data.results ?? []) as Place[]) }
   async function playableUrl(value: string) { if (/^https?:\/\//i.test(value)) return value; const { data, error } = await supabase.storage.from("creator-reels").createSignedUrl(value, 1800); if (error || !data?.signedUrl) throw new Error("The managed sound is unavailable."); return data.signedUrl }
