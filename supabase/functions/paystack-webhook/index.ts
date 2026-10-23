@@ -30,6 +30,14 @@ Deno.serve(async (request) => {
   if (!claimed) return new Response("ok", { status: 200 })
   if (order.purpose === "coins") {
     const { data: product } = await admin.from("dv_coin_products").select("coins,name").eq("id", order.coin_product_id).single()
+    if (!product) return new Response("Coin product unavailable", { status: 500 })
+    const { data: credited, error } = await admin.rpc("credit_payment_coins", { p_user_id: order.user_id, p_amount: product.coins, p_reason: `Paystack purchase: ${product.name}`, p_provider_reference: order.reference })
+    if (error) return new Response("Coin fulfillment failed", { status: 500 })
+    if (credited) await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Coins added", message: `${product.coins} Coins were added after your Paystack payment.`, action_url: "/dashboard/membership" })
+    return new Response("ok", { status: 200 })
+  }
+  if (order.purpose === "coins") {
+    const { data: product } = await admin.from("dv_coin_products").select("coins,name").eq("id", order.coin_product_id).single()
     const { data: wallet } = await admin.from("user_coin_wallets").select("balance").eq("user_id", order.user_id).maybeSingle()
     if (product) { await admin.from("user_coin_wallets").upsert({ user_id: order.user_id, balance: (wallet?.balance ?? 0) + product.coins, updated_at: new Date().toISOString() }); await admin.from("coin_ledger").insert({ user_id: order.user_id, amount: product.coins, reason: `Paystack purchase: ${product.name}`, provider_reference: order.reference }); await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Coins added", message: `${product.coins} Coins were added after your Paystack payment.`, action_url: "/dashboard/membership" }) }
   } else if (order.purpose === "creator_plan") {

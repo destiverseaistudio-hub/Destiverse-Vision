@@ -18,10 +18,17 @@ Deno.serve(async (request) => {
   try { input = await request.json() } catch { return json({ error: "Invalid payment request" }, 400) }
   if (!input.id || !input.purpose || !["membership", "coins", "creator_plan"].includes(input.purpose)) return json({ error: "Choose a valid product" }, 400)
   const admin = createClient(url, service)
+  if (input.purpose === "coins") {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const { count } = await admin.from("payment_orders").select("id", { count: "exact", head: true }).eq("user_id", identity.user.id).eq("purpose", "coins").gte("created_at", hourAgo)
+    if ((count ?? 0) >= 3) return json({ error: "For your protection, wait before starting another Coin purchase." }, 429)
+  }
   let amount: number, currency: string, details: Record<string, unknown>
   if (input.purpose === "membership") {
     const { data: plan } = await admin.from("dv_subscription_plans").select("id,name,price_cents,currency").eq("id", input.id).eq("active", true).maybeSingle()
     if (!plan?.price_cents || !plan.currency) return json({ error: "This membership plan is unavailable" }, 404)
+    const { data: subscription } = await admin.from("dv_subscriptions").select("expires_at").eq("user_id", identity.user.id).eq("status", "active").maybeSingle()
+    if (subscription?.expires_at && new Date(subscription.expires_at) > new Date()) return json({ error: "Premium is already active. Manage it from Membership before buying again." }, 409)
     amount = plan.price_cents; currency = plan.currency; details = { plan_id: plan.id }
   } else if (input.purpose === "coins") {
     const { data: product } = await admin.from("dv_coin_products").select("id,name,coins,price_cents,currency").eq("id", input.id).eq("active", true).maybeSingle()
@@ -30,6 +37,8 @@ Deno.serve(async (request) => {
   } else {
     const { data: plan } = await admin.from("dv_creator_plans").select("id,name,price_cents,currency").eq("id", input.id).eq("active", true).maybeSingle()
     if (!plan?.price_cents || !plan.currency) return json({ error: "This Creator Pro plan is unavailable" }, 404)
+    const { data: subscription } = await admin.from("creator_plan_subscriptions").select("expires_at").eq("user_id", identity.user.id).eq("status", "active").maybeSingle()
+    if (subscription?.expires_at && new Date(subscription.expires_at) > new Date()) return json({ error: "Creator Pro is already active. Manage it before buying again." }, 409)
     amount = plan.price_cents; currency = plan.currency; details = { creator_plan_id: plan.id }
   }
   const ref = reference()

@@ -19,12 +19,10 @@ async function fulfill(admin: ReturnType<typeof createClient>, secret: string, r
   if (order.purpose === "coins") {
     const { data: product } = await admin.from("dv_coin_products").select("coins,name").eq("id", order.coin_product_id).maybeSingle()
     if (!product) return { error: "Coin product was unavailable during fulfillment", status: 500 }
-    const { data: wallet } = await admin.from("user_coin_wallets").select("balance").eq("user_id", order.user_id).maybeSingle()
-    const next = (wallet?.balance ?? 0) + product.coins
-    await admin.from("user_coin_wallets").upsert({ user_id: order.user_id, balance: next, updated_at: new Date().toISOString() })
-    await admin.from("coin_ledger").insert({ user_id: order.user_id, amount: product.coins, reason: `Paystack purchase: ${product.name}`, provider_reference: reference })
-    await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Coins added", message: `${product.coins} Coins were added after your Paystack payment.`, action_url: "/dashboard/membership" })
-    return { paid: true, message: `${product.coins} Coins have been added to your balance.` }
+    const { data: credited, error } = await admin.rpc("credit_payment_coins", { p_user_id: order.user_id, p_amount: product.coins, p_reason: `Paystack purchase: ${product.name}`, p_provider_reference: reference })
+    if (error) return { error: "Could not safely credit Coins. Support has been notified.", status: 500 }
+    if (credited) await admin.from("user_notifications").insert({ user_id: order.user_id, title: "Coins added", message: `${product.coins} Coins were added after your Paystack payment.`, action_url: "/dashboard/membership" })
+    return { paid: true, message: credited ? `${product.coins} Coins have been added to your balance.` : "Payment was already fulfilled." }
   }
   if (order.purpose === "creator_plan") {
     const { data: plan } = await admin.from("dv_creator_plans").select("id,name,duration_days").eq("id", order.creator_plan_id).maybeSingle()
