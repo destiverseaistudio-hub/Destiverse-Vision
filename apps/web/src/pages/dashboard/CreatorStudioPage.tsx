@@ -65,9 +65,9 @@ export default function CreatorStudioPage() {
   }, [session?.user?.id, refreshCount]);
 
   useEffect(() => {
-    const focusedReel = reels.find((reel) => reel.id === focusedReelId);
-    if (!focusedReel) return;
-    const target = Array.from(document.querySelectorAll('article strong')).find((element) => element.textContent === focusedReel.title)?.closest('article');
+    const reelIndex = reels.findIndex((reel) => reel.id === focusedReelId);
+    if (reelIndex < 0) return;
+    const target = document.querySelectorAll<HTMLElement>('article')[reelIndex];
     if (!target) return;
     target.classList.add('border-[var(--dv-accent)]', 'ring-2', 'ring-[var(--dv-accent)]/30');
     const frame = window.requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));

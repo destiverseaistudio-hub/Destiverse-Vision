@@ -25,7 +25,7 @@ import {
   Crown,
   ExternalLink,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -640,7 +640,7 @@ export default function ReelsPage() {
     if (target.closest('button, a, input, textarea, select, [role="dialog"]')) return;
     handleCenterTap(reel);
   };
-  const activateReel = (reelId: string) => {
+  const activateReel = useCallback((reelId: string) => {
     Object.entries(videoRefs.current).forEach(([id, video]) => {
       if (id !== reelId && video) {
         video.pause();
@@ -656,7 +656,7 @@ export default function ReelsPage() {
         void recordAdEvent(match.ad.id, 'impression');
       }
     }
-  };
+  }, [adImpressionsRecorded, feedWithAds]);
   const refreshReels = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -690,7 +690,7 @@ export default function ReelsPage() {
     );
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
-  }, [feedWithAds]);
+  }, [activateReel, feedWithAds]);
   useEffect(() => {
     if (!feedWithAds.length) return;
     if (!activeReelId) {
@@ -729,7 +729,7 @@ export default function ReelsPage() {
         video.currentTime = 0;
       }
     });
-  }, [feedWithAds, activeReelId, reelPlayback, videoMutedByReel, reelLoading]);
+  }, [activateReel, feedWithAds, activeReelId, reelPlayback, videoMutedByReel, reelLoading]);
   const beginPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
     if (feedRef.current?.scrollTop === 0) refreshTouchStart.current = event.touches[0]?.clientY ?? null;
   };
