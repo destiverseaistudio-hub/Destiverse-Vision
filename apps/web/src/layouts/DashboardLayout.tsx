@@ -7,6 +7,7 @@ import AppFooter from '@/components/layout/AppFooter';
 import ViewerAiAssistant from '@/components/layout/ViewerAiAssistant';
 import AppUpdateBanner from '@/components/layout/AppUpdateBanner';
 import NotificationBanner from '@/components/layout/NotificationBanner';
+import NetworkStatusBanner from '@/components/layout/NetworkStatusBanner';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -27,6 +28,7 @@ export default function DashboardLayout() {
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
             <Header />
+            <NetworkStatusBanner />
             <AppUpdateBanner />
             <NotificationBanner />
             <main
