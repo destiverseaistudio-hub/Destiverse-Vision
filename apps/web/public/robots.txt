@@ -1,0 +1,7 @@
+# DestiVerse Vision public pages
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+
+Sitemap: https://destiverse-vision-app.vercel.app/sitemap.xml
