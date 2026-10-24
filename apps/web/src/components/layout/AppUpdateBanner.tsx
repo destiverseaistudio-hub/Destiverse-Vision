@@ -15,12 +15,13 @@ function UpdateButton({ busy, label, onUpdate, full = false }: UpdateButtonProps
 export default function AppUpdateBanner() {
   const { settings } = useContent()
   const [deploymentAvailable, setDeploymentAvailable] = useState(forceUpdateTestMode)
+  const [currentBuildUnseen] = useState(() => runningBuildId !== "unknown" && runningBuildId !== window.localStorage.getItem("dv-last-acknowledged-build"))
   const [latestBuildId, setLatestBuildId] = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  const available = settings.update_enabled === "true" || deploymentAvailable
+  const available = settings.update_enabled === "true" || deploymentAvailable || currentBuildUnseen
   const version = settings.update_version || settings.app_version || "Latest release"
   const title = settings.update_title || "A new DestiVerse Vision update is ready"
   const message = settings.update_message || "Update now for the latest DestiVerse Vision experience."
@@ -53,10 +54,14 @@ export default function AppUpdateBanner() {
   const update = async () => {
     if (settings.update_link && !deploymentAvailable) { window.open(settings.update_link, "_blank", "noopener,noreferrer"); return }
     setBusy(true); setFailed(false)
-    try { await activateLatestApp(latestBuildId ?? undefined) }
+    try { await activateLatestApp(latestBuildId ?? runningBuildId) }
     catch { setFailed(true); setBusy(false) }
   }
-  const minimize = () => { setMinimized(true); setShowModal(false) }
+  const minimize = () => {
+    if (runningBuildId !== "unknown") window.localStorage.setItem("dv-last-acknowledged-build", latestBuildId ?? runningBuildId)
+    setMinimized(true)
+    setShowModal(false)
+  }
   const actionLabel = busy ? "Updating" : failed ? "Try again" : settings.update_link && !deploymentAvailable ? "Update now" : "Update app"
 
   if (!available || minimized) return null
