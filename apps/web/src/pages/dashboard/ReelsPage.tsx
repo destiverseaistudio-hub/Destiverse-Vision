@@ -48,6 +48,13 @@ type Comment = { id: string; body: string; created_at: string; user_id: string; 
 type CreatorSearchResult = { user_id: string; handle: string; display_name: string; avatar_url: string | null };
 type ReportTarget = { kind: 'reel'; reel: Reel } | { kind: 'comment'; comment: Comment };
 const recentReelSearchesKey = 'destiverse-reel-recent-searches';
+const reelFeedPageSize = 24;
+type NetworkConnection = {
+  effectiveType?: string;
+  saveData?: boolean;
+  addEventListener?: (event: 'change', listener: () => void) => void;
+  removeEventListener?: (event: 'change', listener: () => void) => void;
+};
 const commentEmojiPack = ['😡', '👍', '😎', '😒', '🚀', '🤗', '😍', '❤️', '🤣', '😂', '😊', '😉', '👌', '😘', '😁', '🙌', '🤦‍♀️', '🎶', '🤞', '✌️', '🤷‍♂️', '🤷‍♀️', '🤦‍♂️'];
 const demos: Reel[] = [
   [
@@ -163,6 +170,7 @@ export default function ReelsPage() {
   const [adFree, setAdFree] = useState(false);
   const [adImpressionsRecorded, setAdImpressionsRecorded] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [slowConnection, setSlowConnection] = useState(false);
   const normalizedSearch = searchQuery.trim().toLowerCase().replace(/^@/, '');
   const searchTerms = normalizedSearch.replace(/[^a-z0-9#@]+/g, ' ').split(/\s+/).map(term => term.replace(/^[@#]/, '')).filter(Boolean);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -197,12 +205,23 @@ export default function ReelsPage() {
     setRecentSearches(next); window.localStorage.setItem(recentReelSearchesKey, JSON.stringify(next));
   };
   useEffect(() => {
+    const connection = (navigator as Navigator & { connection?: NetworkConnection }).connection;
+    const updateConnection = () => {
+      const type = connection?.effectiveType;
+      setSlowConnection(Boolean(connection?.saveData || type === 'slow-2g' || type === '2g'));
+    };
+    updateConnection();
+    connection?.addEventListener?.('change', updateConnection);
+    return () => connection?.removeEventListener?.('change', updateConnection);
+  }, []);
+  useEffect(() => {
     const load = async () => {
       const { data } = await supabase
         .from('reel_submissions')
         .select('id,title,caption,video_url,poster_url,media_type,editor_settings,audio_label,creator_id,creator_profiles(handle,display_name,avatar_url)')
         .eq('status', 'approved')
-        .order('published_at', { ascending: false });
+        .order('published_at', { ascending: false })
+        .limit(reelFeedPageSize);
       const signed = await Promise.all(
         (data ?? []).map(async (reel) => {
           const [{ data: mediaUrl }, { data: posterUrl }] = await Promise.all([
@@ -247,8 +266,6 @@ export default function ReelsPage() {
     const channel = supabase
       .channel(`reels-feed-${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_submissions' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_reactions' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reel_comments' }, load)
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
@@ -641,13 +658,10 @@ export default function ReelsPage() {
     handleCenterTap(reel);
   };
   const activateReel = useCallback((reelId: string) => {
-    Object.entries(videoRefs.current).forEach(([id, video]) => {
-      if (id !== reelId && video) {
-        video.pause();
-        video.currentTime = 0;
-      }
+    setActiveReelId((current) => {
+      if (current && current !== reelId) videoRefs.current[current]?.pause();
+      return current === reelId ? current : reelId;
     });
-    setActiveReelId((current) => current === reelId ? current : reelId);
     if (reelId.startsWith('ad-')) {
       const match = feedWithAds.find((item) => 'isAd' in item && item.id === reelId) as { isAd: true; id: string; ad: AdCampaign } | undefined;
       if (match && !adImpressionsRecorded[reelId]) {
@@ -702,33 +716,26 @@ export default function ReelsPage() {
     Object.keys(videoRefs.current).forEach((id) => {
       if (!videoIds.has(id)) delete videoRefs.current[id];
     });
-    feedWithAds.forEach((reel) => {
-      const video = videoRefs.current[reel.id];
-      if (!video) return;
-      const isCurrent = reel.id === activeReelId;
-      const shouldPlay = isCurrent && (reelPlayback[reel.id] ?? true);
-      const muted = !isCurrent || (videoMutedByReel[reel.id] ?? ('isAd' in reel));
-      video.muted = muted;
-      if (shouldPlay) {
-        void video.play().catch(() => {
-          // Sound-on autoplay may be blocked by the browser. Retry muted so a swipe
-          // never leaves the next Reel paused.
-          if (!video.muted && isCurrent) {
-            video.muted = true;
-            setVideoMutedByReel((current) => current[reel.id] === true ? current : { ...current, [reel.id]: true });
-            void video.play().catch(() => undefined);
-          }
-        });
-        video.setAttribute('data-play-state', 'active');
-      } else {
-        video.pause();
-        video.setAttribute('data-play-state', 'paused');
-      }
-      if (!isCurrent) {
-        video.pause();
-        video.currentTime = 0;
+    const activeEntry = feedWithAds.find((entry) => entry.id === activeReelId);
+    const video = activeReelId ? videoRefs.current[activeReelId] : null;
+    if (!activeEntry || !video || !activeReelId) return;
+    const shouldPlay = reelPlayback[activeReelId] ?? true;
+    video.muted = videoMutedByReel[activeReelId] ?? ('isAd' in activeEntry);
+    if (!shouldPlay) {
+      video.pause();
+      video.setAttribute('data-play-state', 'paused');
+      return;
+    }
+    void video.play().catch(() => {
+      // Sound-on autoplay may be blocked by the browser. Retry muted so a swipe
+      // never leaves the next Reel paused.
+      if (!video.muted) {
+        video.muted = true;
+        setVideoMutedByReel((current) => current[activeReelId] === true ? current : { ...current, [activeReelId]: true });
+        void video.play().catch(() => undefined);
       }
     });
+    video.setAttribute('data-play-state', 'active');
   }, [activateReel, feedWithAds, activeReelId, reelPlayback, videoMutedByReel, reelLoading]);
   const beginPullToRefresh = (event: React.TouchEvent<HTMLDivElement>) => {
     if (feedRef.current?.scrollTop === 0) refreshTouchStart.current = event.touches[0]?.clientY ?? null;
@@ -752,6 +759,7 @@ export default function ReelsPage() {
     if (start === null || end === undefined || end - start < 84 || feedRef.current?.scrollTop !== 0 || isRefreshing) return;
     void refreshReels();
   };
+  const activeEntryIndex = feedWithAds.findIndex((entry) => entry.id === activeReelId);
   return (
     <main className="relative mx-auto h-full min-h-[calc(100dvh-10rem)] max-w-[520px] overflow-hidden bg-black shadow-2xl sm:min-h-[calc(100dvh-9rem)] lg:min-h-0 sm:rounded-[2rem] sm:border sm:border-white/10">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-5 py-5">
@@ -769,10 +777,10 @@ export default function ReelsPage() {
         ref={feedRef}
         onTouchStart={beginPullToRefresh}
         onTouchEnd={finishPullToRefresh}
-        className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="h-full min-h-0 snap-y snap-mandatory overscroll-contain overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {isRefreshing ? <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center"><span className="rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">Refreshing Reels…</span></div> : null}
-        {feedWithAds.map((entry) => "ad" in entry ? (
+        {feedWithAds.map((entry, entryIndex) => "ad" in entry ? (
           <article
             key={entry.id}
             data-reel-id={entry.id}
@@ -855,7 +863,7 @@ export default function ReelsPage() {
               </div>
             </div>
           </article>
-        ) : (() => { const reel = entry; return (
+        ) : (() => { const reel = entry; const isNearActiveReel = activeEntryIndex < 0 || Math.abs(entryIndex - activeEntryIndex) <= 1; return (
           <article key={reel.id} data-reel-id={reel.id} tabIndex={0} onKeyDown={(event) => { if (!reel.demo && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCenterTap(reel); } }} onClick={(event) => handleReelSurfaceTap(event, reel)} className="relative h-full min-h-full snap-start snap-always bg-zinc-950 outline-none focus-visible:ring-2 focus-visible:ring-[var(--dv-accent)] touch-pan-y">
             {reel.demo ? (
               <DemoVisual reel={reel} />
@@ -866,7 +874,9 @@ export default function ReelsPage() {
               </>
             ) : (
               <>
-              <video
+              {!isNearActiveReel ? (
+                reel.poster_url ? <img src={reel.poster_url} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 bg-zinc-950" />
+              ) : <video
                 ref={(node) => {
                   if (node) videoRefs.current[reel.id] = node;
                   else delete videoRefs.current[reel.id];
@@ -874,10 +884,11 @@ export default function ReelsPage() {
                 className={`absolute inset-0 h-full w-full ${mediaFitByReel[reel.id] === 'contain' ? 'object-contain' : 'object-cover'}`}
                 style={{ filter: reel.editor_settings?.filter === 'vivid' ? 'saturate(1.45) contrast(1.08)' : reel.editor_settings?.filter === 'mono' ? 'grayscale(1) contrast(1.08)' : reel.editor_settings?.filter === 'warm' ? 'sepia(.24) saturate(1.2)' : 'none' }}
                 src={reel.video_url}
+                poster={reel.poster_url ?? undefined}
                 playsInline
                 loop
                 muted={videoMutedByReel[reel.id] ?? false}
-                preload={activeReelId === reel.id ? 'auto' : 'metadata'}
+                preload={activeReelId === reel.id ? 'auto' : slowConnection ? 'none' : 'metadata'}
                 onLoadStart={() => { setReelErrors((current) => ({ ...current, [reel.id]: false })); setReelLoading((current) => ({ ...current, [reel.id]: true })); }}
                 onCanPlay={() => setReelLoading((current) => ({ ...current, [reel.id]: false }))}
                 onWaiting={() => setReelLoading((current) => ({ ...current, [reel.id]: true }))}
@@ -893,7 +904,7 @@ export default function ReelsPage() {
                 }}
                 onError={() => { setReelLoading((current) => ({ ...current, [reel.id]: false })); setReelErrors((current) => ({ ...current, [reel.id]: true })); }}
                 onPlay={() => void trackView(reel)}
-              />
+              />}
               {reel.editor_settings?.overlay_text ? <span className="pointer-events-none absolute inset-x-5 bottom-44 z-10 text-center text-xl font-black leading-tight text-white [text-shadow:0_2px_10px_rgb(0_0_0_/_0.9)]">{reel.editor_settings.overlay_text}</span> : null}
               </>
             )}
