@@ -1,4 +1,4 @@
-import { Download, RefreshCw, X } from "lucide-react"
+import { Download, Minimize2, RefreshCw, Sparkles, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useContent } from "@/hooks/useContent"
 import { activateLatestApp, fetchLatestVersion, runningBuildId } from "@/lib/app-update"
@@ -16,10 +16,11 @@ export default function AppUpdateBanner() {
   const { settings } = useContent()
   const [deploymentAvailable, setDeploymentAvailable] = useState(forceUpdateTestMode)
   const [latestBuildId, setLatestBuildId] = useState<string | null>(null)
+  const [minimized, setMinimized] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  const available = deploymentAvailable
+  const available = settings.update_enabled === "true" || deploymentAvailable
   const version = settings.update_version || settings.app_version || "Latest release"
   const title = settings.update_title || "A new DestiVerse Vision update is ready"
   const message = settings.update_message || "Update now for the latest DestiVerse Vision experience."
@@ -44,10 +45,10 @@ export default function AppUpdateBanner() {
   }, [])
 
   useEffect(() => {
-    if (!available) return
+    if (!available || minimized) return
     const timer = window.setTimeout(() => setShowModal(true), promptDelayMs)
     return () => window.clearTimeout(timer)
-  }, [available, version])
+  }, [available, minimized, version])
 
   const update = async () => {
     if (settings.update_link && !deploymentAvailable) { window.open(settings.update_link, "_blank", "noopener,noreferrer"); return }
@@ -55,8 +56,12 @@ export default function AppUpdateBanner() {
     try { await activateLatestApp(latestBuildId ?? undefined) }
     catch { setFailed(true); setBusy(false) }
   }
+  const minimize = () => { setMinimized(true); setShowModal(false) }
   const actionLabel = busy ? "Updating" : failed ? "Try again" : settings.update_link && !deploymentAvailable ? "Update now" : "Update app"
 
-  if (!available || !showModal) return null
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" className="w-full max-w-md rounded-3xl border border-[var(--dv-accent)]/30 bg-[var(--dv-surface)] p-6 shadow-2xl shadow-black/60"><div className="flex items-start justify-between gap-3"><span className="grid size-12 place-items-center rounded-2xl bg-[var(--dv-accent)]/15 text-[var(--dv-accent)]"><Download className="size-6" /></span><button type="button" onClick={() => setShowModal(false)} className="grid size-9 place-items-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close update notice"><X className="size-4" /></button></div><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-[var(--dv-accent)]">{version}</p><h2 id="update-dialog-title" className="mt-2 text-2xl font-black text-white">{title}</h2><p className="mt-3 text-sm leading-6 text-slate-300">{message}</p><div className="mt-6 grid gap-3 sm:grid-cols-2"><UpdateButton busy={busy} label={actionLabel} onUpdate={() => void update()} full /><button type="button" onClick={() => setShowModal(false)} className="rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-white">Later</button></div><p className="mt-4 text-center text-xs text-slate-500">This notice appears only when a newer web release is available.</p></section></div>
+  if (!available || minimized) return null
+  return <>
+    <aside className="border-b border-[var(--dv-accent)]/25 bg-[var(--dv-accent)]/[0.09] px-3 py-2.5 sm:px-6" aria-live="polite" aria-label="App update available"><div className="mx-auto flex w-full max-w-[var(--dv-content-max-width)] items-center gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--dv-accent)]/20 text-[var(--dv-accent)]"><Sparkles className="size-4" /></span><div className="min-w-0 flex-1"><strong className="block truncate text-sm text-white">{failed ? "Update could not be completed" : title}</strong><span className="block truncate text-xs text-white/65">{failed ? "Try again or continue using the current version." : `${version} · ${message}`}</span></div><UpdateButton busy={busy} label={actionLabel} onUpdate={() => void update()} /><button type="button" onClick={minimize} className="grid size-8 shrink-0 place-items-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label="Hide update notice until refresh"><Minimize2 className="size-4" /></button></div></aside>
+    {showModal ? <div className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" className="w-full max-w-md rounded-3xl border border-[var(--dv-accent)]/30 bg-[var(--dv-surface)] p-6 shadow-2xl shadow-black/60"><div className="flex items-start justify-between gap-3"><span className="grid size-12 place-items-center rounded-2xl bg-[var(--dv-accent)]/15 text-[var(--dv-accent)]"><Download className="size-6" /></span><button type="button" onClick={minimize} className="grid size-9 place-items-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close update notice"><X className="size-4" /></button></div><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-[var(--dv-accent)]">{version}</p><h2 id="update-dialog-title" className="mt-2 text-2xl font-black text-white">{title}</h2><p className="mt-3 text-sm leading-6 text-slate-300">{message}</p><div className="mt-6 grid gap-3 sm:grid-cols-2"><UpdateButton busy={busy} label={actionLabel} onUpdate={() => void update()} full /><button type="button" onClick={minimize} className="rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-white">Later</button></div><p className="mt-4 text-center text-xs text-slate-500">Later hides this notice until the app is refreshed.</p></section></div> : null}
+  </>
 }
