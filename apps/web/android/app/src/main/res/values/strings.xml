@@ -4,4 +4,5 @@
     <string name="title_activity_main">DestiVerse Vision</string>
     <string name="package_name">com.destiverse.vision</string>
     <string name="custom_url_scheme">com.destiverse.vision</string>
+    <string name="admob_app_id">ca-app-pub-1230612615908063~6314942466</string>
 </resources>

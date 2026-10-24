@@ -6,6 +6,7 @@ import ContentRow from '@/components/content/ContentRow';
 import { getWatchProgress } from '@/services/library';
 import AdSlot from '@/components/ads/AdSlot';
 import GoogleAdSlot from '@/components/ads/GoogleAdSlot';
+import NativeAdMobBanner from '@/components/ads/NativeAdMobBanner';
 
 export default function DashboardHome() {
   const { featured, rows, settings } = useContent();
@@ -24,6 +25,7 @@ export default function DashboardHome() {
       <AdSlot placement="home" format="ribbon" />
       <AdSlot placement="home" format="banner" />
       <GoogleAdSlot placement="home" />
+      <NativeAdMobBanner />
       <AdSlot placement="home" format="popup" />
 
       {settings.announcement ? (

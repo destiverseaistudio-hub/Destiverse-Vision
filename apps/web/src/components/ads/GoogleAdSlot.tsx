@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useContent } from "@/contexts/ContentContext"
+import { isNativeAndroid } from "@/lib/admob"
 import { viewerHasAdFreeAccess } from "@/services/ads"
 
 type Placement = "home" | "content"
@@ -13,9 +14,10 @@ export default function GoogleAdSlot({ placement }: { placement: Placement }) {
   const { settings } = useContent()
   const [adFree, setAdFree] = useState(true)
   const pushed = useRef(false)
+  const nativeAndroid = isNativeAndroid()
   const client = settings.google_adsense_client?.trim() || ""
   const slot = (placement === "home" ? settings.google_adsense_home_slot : settings.google_adsense_content_slot)?.trim() || ""
-  const enabled = settings.google_adsense_enabled === "true" && /^ca-pub-\d{10,}$/.test(client) && /^\d{6,}$/.test(slot)
+  const enabled = !nativeAndroid && settings.google_adsense_enabled === "true" && /^ca-pub-\d{10,}$/.test(client) && /^\d{6,}$/.test(slot)
 
   useEffect(() => {
     let active = true
