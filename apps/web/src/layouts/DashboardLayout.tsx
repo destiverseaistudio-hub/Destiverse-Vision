@@ -8,6 +8,7 @@ import ViewerAiAssistant from '@/components/layout/ViewerAiAssistant';
 import AppUpdateBanner from '@/components/layout/AppUpdateBanner';
 import NotificationBanner from '@/components/layout/NotificationBanner';
 import NetworkStatusBanner from '@/components/layout/NetworkStatusBanner';
+import DevicePermissionPrompt from '@/components/layout/DevicePermissionPrompt';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -49,6 +50,7 @@ export default function DashboardLayout() {
         </div>
         <MobileBottomNav />
         {!isReelsExperience ? <ViewerAiAssistant /> : null}
+        <DevicePermissionPrompt />
       </div>
     </MaintenanceGate>
   );
